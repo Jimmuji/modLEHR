@@ -34,6 +34,8 @@ def classify_codes(codes: pd.DataFrame, rules: list[EventRule]) -> pd.Series:
             match &= code.isin(rule.codes).to_numpy()
         if rule.description_regex:
             match &= desc.str.contains(rule.description_regex, regex=True).to_numpy()
+        if rule.exclude_regex:
+            match &= ~code.str.contains(rule.exclude_regex, regex=True).to_numpy()
         assigned[match & (assigned == -1)] = i
     keep = assigned >= 0
     return pd.Series(assigned[keep], index=code[keep].to_numpy())

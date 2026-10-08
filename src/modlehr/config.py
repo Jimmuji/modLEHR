@@ -36,6 +36,7 @@ class EventRule:
     prefix: str | None = None
     codes: list[str] | None = None
     description_regex: str | None = None
+    exclude_regex: str | None = None  # codes matching this are left out of the rule
     thin_years: float | None = None
     first_occurrence: bool | None = None
 
@@ -61,6 +62,7 @@ class ModelConfig:
     time_encoding: str = "sinusoidal_age"
     value_encoding: str = "none"
     attention: str = "mha"
+    attention_options: dict = field(default_factory=dict)  # passed to the attention, e.g. {n_kv_heads: 2}
     norm: str = "layernorm"
     ffn: str = "gelu_mlp"
     head: str = "competing_risk"

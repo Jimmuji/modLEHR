@@ -74,3 +74,29 @@ def test_init_rates():
     head.init_rates([9, 0, 99], exposure_years=100.0)
     rates = head(torch.zeros(1, 8)).exp()
     assert torch.allclose(rates, torch.tensor([[0.1, 0.01, 1.0]]), atol=1e-6)
+
+
+def test_every_attention_is_causal():
+    for name in registry.available("attention"):
+        m, x = model(attention=name), batch()
+        base = m(x)
+        y = {k: v.clone() for k, v in x.items()}
+        y["tokens"][0, 6] = (y["tokens"][0, 6] % 19) + 1
+        assert torch.allclose(base[0, :6], m(y)[0, :6], atol=1e-5), name
+
+
+def test_gqa_has_fewer_parameters():
+    full = model(attention="mha").n_parameters()
+    grouped = model(attention="gqa", attention_options={"n_kv_heads": 1}).n_parameters()
+    assert grouped < full
+
+
+def test_rope_age_depends_only_on_age_differences():
+    # with no absolute age encoding, shifting every age by the same amount changes nothing
+    m, x = model(attention="rope_age", time_encoding="none"), batch()
+    y = {k: v.clone() for k, v in x.items()}
+    y["ages"] = y["ages"] + 7.5
+    assert torch.allclose(m(x), m(y), atol=1e-4)
+    # but changing the gap between events does
+    y["ages"][:, 5:] += 3.0
+    assert not torch.allclose(m(x), m(y), atol=1e-4)

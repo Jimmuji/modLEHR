@@ -73,3 +73,21 @@ def test_prepare_binned(tiny_config):
     run_prepare(cfg, log=lambda *_: None)
     vocab = Vocabulary.load(Path(cfg.prepared_dir) / "vocab.json")
     assert {"LOINC//4548-4//Q1", "LOINC//4548-4//Q2", "LOINC//4548-4//Q3"} <= set(vocab.tokens)
+
+
+def test_icd_3char_mixed_versions():
+    from modlehr.prepare.grouping import icd_3char
+    assert icd_3char("DIAGNOSIS//ICD//10//E119") == "ICD10//E11"
+    assert icd_3char("DIAGNOSIS//ICD//9//4280") == "ICD9//428"
+    assert icd_3char("DIAGNOSIS//ICD//9//E8889") == "ICD9//E888"
+    assert icd_3char("ICD10CM//I10") == "ICD10//I10"
+    assert icd_3char("LAB//50912//mg/dL") == "LAB//50912//mg/dL"
+
+
+def test_exclude_regex():
+    import pandas as pd
+    from modlehr.config import EventRule
+    from modlehr.prepare.select import classify_codes
+    codes = pd.DataFrame({"code": ["LAB//1//mg", "LAB//SPECIMEN_COLLECTED//1//STAT"], "description": [None, None]})
+    rule = EventRule(name="labs", role="measurement", prefix="LAB//", exclude_regex="SPECIMEN_COLLECTED")
+    assert list(classify_codes(codes, [rule]).index) == ["LAB//1//mg"]

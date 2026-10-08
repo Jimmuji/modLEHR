@@ -2,6 +2,7 @@
 
 The baseline is a plain GPT block: pre-norm LayerNorm, multi-head causal attention, GELU MLP.
 New parts from recent LLMs are added here (or in a new module) and registered by name.
+Attention modules are called as attn(x, mask, ages=ages); modules that do not use ages ignore them.
 """
 
 from __future__ import annotations
@@ -13,24 +14,84 @@ import torch.nn.functional as F
 from modlehr.registry import register
 
 
-@register("attention", "mha")
-class CausalSelfAttention(nn.Module):
-    """Multi-head attention. The mask passed in is causal plus key padding."""
+class Attention(nn.Module):
+    """Causal self-attention with options that cover several recent designs.
 
-    def __init__(self, d_model: int, n_heads: int, dropout: float = 0.0):
+    n_kv_heads < n_heads gives grouped-query attention (query heads share key/value heads).
+    rope="index" rotates queries and keys by event position; rope="age" rotates them by the
+    patient's age at each event, so attention depends on how many years apart two events are,
+    not on how many events lie between them.
+    """
+
+    def __init__(self, d_model: int, n_heads: int, dropout: float = 0.0, n_kv_heads: int | None = None,
+                 rope: str | None = None, rope_base: float = 10000.0, age_scale: float = 1.0):
         super().__init__()
         if d_model % n_heads:
             raise ValueError("d_model must be divisible by n_heads")
-        self.n_heads = n_heads
-        self.qkv = nn.Linear(d_model, 3 * d_model)
-        self.out = nn.Linear(d_model, d_model)
+        self.n_heads, self.n_kv = n_heads, n_kv_heads or n_heads
+        if n_heads % self.n_kv:
+            raise ValueError("n_heads must be a multiple of n_kv_heads")
+        self.head_dim = d_model // n_heads
+        if rope not in (None, "index", "age"):
+            raise ValueError("rope must be None, 'index' or 'age'")
+        if rope and self.head_dim % 2:
+            raise ValueError("rope needs an even head dimension")
+        self.rope, self.age_scale = rope, age_scale
+        self.q = nn.Linear(d_model, n_heads * self.head_dim)
+        self.kv = nn.Linear(d_model, 2 * self.n_kv * self.head_dim)
+        self.out = nn.Linear(n_heads * self.head_dim, d_model)
         self.dropout = dropout
+        inv_freq = rope_base ** (-torch.arange(0, self.head_dim, 2, dtype=torch.float32) / self.head_dim)
+        self.register_buffer("inv_freq", inv_freq, persistent=False)
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        b, t, d = x.shape
-        q, k, v = self.qkv(x).view(b, t, 3, self.n_heads, d // self.n_heads).permute(2, 0, 3, 1, 4)
+    def _rotate(self, x: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
+        """x: [B, H, T, D]; positions: [B, T]. Rotates pairs of dimensions by position * frequency."""
+        angle = positions.unsqueeze(1).unsqueeze(-1) * self.inv_freq  # [B, 1, T, D/2]
+        cos, sin = angle.cos(), angle.sin()
+        x1, x2 = x[..., 0::2], x[..., 1::2]
+        return torch.stack((x1 * cos - x2 * sin, x1 * sin + x2 * cos), dim=-1).flatten(-2)
+
+    def forward(self, x: torch.Tensor, mask: torch.Tensor, ages: torch.Tensor | None = None) -> torch.Tensor:
+        b, t, _ = x.shape
+        q = self.q(x).view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
+        k, v = self.kv(x).view(b, t, 2, self.n_kv, self.head_dim).permute(2, 0, 3, 1, 4)
+        if self.rope:
+            if self.rope == "age":
+                if ages is None:
+                    raise ValueError("rope='age' needs ages")
+                positions = ages * self.age_scale
+            else:
+                positions = torch.arange(t, device=x.device, dtype=x.dtype).expand(b, t)
+            q, k = self._rotate(q, positions), self._rotate(k, positions)
+        if self.n_kv < self.n_heads:
+            k = k.repeat_interleave(self.n_heads // self.n_kv, dim=1)
+            v = v.repeat_interleave(self.n_heads // self.n_kv, dim=1)
         y = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=self.dropout if self.training else 0.0)
-        return self.out(y.transpose(1, 2).reshape(b, t, d))
+        return self.out(y.transpose(1, 2).reshape(b, t, -1))
+
+
+@register("attention", "mha")
+def mha(d_model: int, n_heads: int, dropout: float = 0.0, **options) -> Attention:
+    """Plain multi-head attention, as in GPT-2."""
+    return Attention(d_model, n_heads, dropout, **options)
+
+
+@register("attention", "gqa")
+def gqa(d_model: int, n_heads: int, dropout: float = 0.0, n_kv_heads: int | None = None, **options) -> Attention:
+    """Grouped-query attention (Llama 2/3, Qwen): n_kv_heads key/value heads, default half the query heads."""
+    return Attention(d_model, n_heads, dropout, n_kv_heads=n_kv_heads or max(1, n_heads // 2), **options)
+
+
+@register("attention", "rope")
+def rope_index(d_model: int, n_heads: int, dropout: float = 0.0, **options) -> Attention:
+    """Rotary position embedding over event order."""
+    return Attention(d_model, n_heads, dropout, rope="index", **options)
+
+
+@register("attention", "rope_age")
+def rope_age(d_model: int, n_heads: int, dropout: float = 0.0, **options) -> Attention:
+    """Rotary embedding over age: attention sees the years between events."""
+    return Attention(d_model, n_heads, dropout, rope="age", **options)
 
 
 @register("norm", "layernorm")

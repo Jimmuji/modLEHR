@@ -29,3 +29,4 @@ packages = ["src/modlehr"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]  # tests do not depend on the editable-install .pth file

@@ -36,13 +36,14 @@ class Block(nn.Module):
     def __init__(self, cfg: ModelConfig):
         super().__init__()
         self.norm1 = registry.build("norm", cfg.norm, d_model=cfg.d_model)
-        self.attn = registry.build("attention", cfg.attention, d_model=cfg.d_model, n_heads=cfg.n_heads, dropout=cfg.dropout)
+        self.attn = registry.build("attention", cfg.attention, d_model=cfg.d_model, n_heads=cfg.n_heads, dropout=cfg.dropout,
+                                   **cfg.attention_options)
         self.norm2 = registry.build("norm", cfg.norm, d_model=cfg.d_model)
         self.ffn = registry.build("ffn", cfg.ffn, d_model=cfg.d_model, dropout=cfg.dropout)
         self.drop = nn.Dropout(cfg.dropout)
 
-    def forward(self, x: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        x = x + self.drop(self.attn(self.norm1(x), mask))
+    def forward(self, x: torch.Tensor, mask: torch.Tensor, ages: torch.Tensor) -> torch.Tensor:
+        x = x + self.drop(self.attn(self.norm1(x), mask, ages=ages))
         return x + self.ffn(self.norm2(x))
 
 
@@ -77,7 +78,7 @@ class ModLEHR(nn.Module):
         x = self.input_head(tokens, batch["ages"], batch["values"], batch["has_value"], extra)
         mask = attention_mask(tokens)
         for block in self.blocks:
-            x = block(x, mask)
+            x = block(x, mask, batch["ages"])
         return self.head(self.norm(x))
 
     def loss(self, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, dict]:

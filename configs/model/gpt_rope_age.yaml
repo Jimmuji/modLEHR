@@ -1,0 +1,4 @@
+# Plain GPT with rotary embedding over age: attention depends on the years between events.
+defaults: [gpt_baseline.yaml]
+model:
+  attention: rope_age

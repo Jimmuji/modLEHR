@@ -1,0 +1,3 @@
+defaults: [synthea_gpt.yaml, ../model/gpt_rope_age.yaml]
+train:
+  out_dir: runs/synthea_gpt_rope_age

@@ -40,7 +40,23 @@ uv venv --python 3.13 .venv && uv pip install --python .venv/bin/python -e ".[de
 On macOS with Python 3.13, if `import modlehr` fails after an editable install, clear the hidden flag on
 the installed path file: `chflags nohidden .venv/lib/python3.13/site-packages/*.pth`.
 
-Synthea must be run with `--exporter.csv.export true`. Run commands from the repository root;
+If the `.pth` keeps getting hidden, run the commands as `PYTHONPATH=src .venv/bin/python -m modlehr ...`;
+`scripts/compare_synthea.sh` does this.
+
+Synthea must be run with `--exporter.csv.export true`.
+
+## MIMIC-IV
+
+The official ETL writes MEDS; modLEHR reads it with `configs/data/mimic_iv_demo.yaml`. The demo
+(100 patients, open access) checks the pipeline end to end:
+
+```bash
+uv venv --python 3.11 .venv-etl && uv pip install --python .venv-etl/bin/python MIMIC_IV_MEDS
+PATH="$PWD/.venv-etl/bin:$PATH" meds-extract-run spec=MIMIC-IV output_dir=$PWD/data/mimic_iv_demo_meds dataset_key=demo
+.venv/bin/modlehr prepare --config configs/experiment/mimic_iv_demo_gpt.yaml
+```
+
+The full dataset needs PhysioNet credentials; point `meds_dir` at its MEDS output. Run commands from the repository root;
 paths in configs are relative to it. Training picks CUDA, then Apple MPS, then CPU.
 
 ## Layout
@@ -70,15 +86,16 @@ Every swappable part is registered under a kind and a name:
 
 | Kind | Registered now |
 |---|---|
-| `attention` | `mha` |
+| `attention` | `mha`, `gqa` (grouped-query), `rope` (rotary over event order), `rope_age` (rotary over age) |
 | `norm` | `layernorm`, `rmsnorm` |
 | `ffn` | `gelu_mlp`, `swiglu` |
 | `time_encoding` | `sinusoidal_age`, `none` |
 | `value_encoding` | `none`, `mlp` |
 | `head` | `competing_risk` |
-| `target_grouping` | `identity`, `icd10_3char` |
+| `target_grouping` | `identity`, `icd10_3char`, `icd_3char` (ICD-9 and ICD-10 mixed, as in MIMIC-IV) |
 
-To try a new attention, write a module with the same call signature, decorate it with
+Options for a part go in the config, for example `attention_options: {n_kv_heads: 2}`.
+To try a new attention, write a module called as `attn(x, mask, ages=ages)`, decorate it with
 `@register("attention", "my_attention")`, import it in `modlehr/model/model.py`, and set
 `model.attention: my_attention` in a config.
 
@@ -88,10 +105,15 @@ Write an adapter that produces MEDS (or use an existing MEDS ETL), then a data c
 event rules. Each rule selects codes by prefix, list or description, and gives them a role:
 `target` (outcomes the model predicts), `static`, `measurement`, `categorical` or `context`.
 
+## Comparing runs
+
+`scripts/compare_synthea.sh` trains the baseline and its variants; `scripts/compare_runs.py` prints mean
+AUC and the paired difference against the first run.
+
 ## Tests
 
 ```bash
 .venv/bin/python -m pytest
 ```
 
-See `docs/design.md` for the modeling choices.
+See `docs/design.md` for the modeling choices and `docs/disease_codes.md` for prediction targets.

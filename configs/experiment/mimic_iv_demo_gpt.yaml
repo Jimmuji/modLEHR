@@ -1,0 +1,18 @@
+# Plain GPT on the MIMIC-IV demo: a check that the pipeline runs on MIMIC, not a result.
+defaults: [../data/mimic_iv_demo.yaml, ../model/gpt_baseline.yaml]
+model:
+  d_model: 64
+  n_layers: 2
+  n_heads: 2
+train:
+  out_dir: runs/mimic_iv_demo_gpt
+  batch_size: 16
+  steps: 300
+  warmup: 30
+  eval_every: 50
+  eval_batches: 2
+  device: cpu
+evaluate:
+  landmarks: [50, 60, 70]
+  horizon_years: 5
+  min_cases: 2

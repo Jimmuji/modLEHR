@@ -1,0 +1,15 @@
+# MIMIC-IV demo (100 patients, open access) in MEDS, written by the official MIMIC_IV_MEDS ETL:
+#   meds-extract-run spec=MIMIC-IV output_dir=data/mimic_iv_demo_meds dataset_key=demo
+# Too small to train a useful model; it shows the same code runs on a real hospital source.
+data:
+  meds_dir: data/mimic_iv_demo_meds
+  prepared_dir: runs/prepared/mimic_iv_demo
+  target_grouping: icd_3char       # 1,474 diagnosis codes → 704 categories in the demo
+  min_subjects_per_token: 5
+  value_mode: binned
+  n_bins: 3
+  events:
+    - {name: sex, role: static, prefix: "GENDER//"}
+    - {name: death, role: target, codes: ["MEDS_DEATH"]}
+    - {name: diagnoses, role: target, prefix: "DIAGNOSIS//ICD//"}
+    - {name: labs_vitals, role: measurement, prefix: "LAB//", exclude_regex: "SPECIMEN_COLLECTED", thin_years: 0.25}
