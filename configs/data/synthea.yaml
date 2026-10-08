@@ -1,0 +1,30 @@
+# Synthea in MEDS (written by `modlehr convert synthea`).
+data:
+  meds_dir: data/synthea_meds
+  prepared_dir: runs/prepared/synthea_binned
+  target_grouping: identity        # Synthea's disorders are already a small set (about 200)
+  min_subjects_per_token: 25
+  value_mode: binned               # plain GPT baseline: each measurement becomes code//Q1..Q3
+  n_bins: 3
+  events:
+    - {name: sex, role: static, prefix: "GENDER//"}
+    - {name: death, role: target, codes: ["MEDS_DEATH"]}
+    - {name: disorders, role: target, prefix: "SNOMEDCT//", description_regex: "\\(disorder\\)"}
+    - {name: smoking, role: categorical, codes: ["LOINC//72166-2"], first_occurrence: true}
+    - name: measurements
+      role: measurement
+      thin_years: 2                # first value per measurement in each 2-year window
+      codes:
+        - "LOINC//39156-5"   # BMI
+        - "LOINC//8480-6"    # systolic blood pressure
+        - "LOINC//8462-4"    # diastolic blood pressure
+        - "LOINC//8867-4"    # heart rate
+        - "LOINC//29463-7"   # body weight
+        - "LOINC//2093-3"    # total cholesterol
+        - "LOINC//18262-6"   # LDL cholesterol
+        - "LOINC//2085-9"    # HDL cholesterol
+        - "LOINC//2571-8"    # triglycerides
+        - "LOINC//2339-0"    # glucose
+        - "LOINC//4548-4"    # HbA1c
+        - "LOINC//38483-4"   # creatinine
+        - "LOINC//33914-3"   # eGFR

@@ -1,0 +1,10 @@
+# Same as synthea_gpt, but measurements keep their numbers and the input head reads them
+# (value_encoding: mlp). Only the data value_mode and the value encoding change.
+defaults: [synthea_gpt.yaml]
+data:
+  prepared_dir: runs/prepared/synthea_values
+  value_mode: continuous
+model:
+  value_encoding: mlp
+train:
+  out_dir: runs/synthea_gpt_values

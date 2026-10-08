@@ -1,0 +1,14 @@
+# Plain GPT: pre-norm LayerNorm, multi-head causal attention, GELU MLP, age encoding in place
+# of positions, measurements read as tokens only. Swap any part by its registered name.
+model:
+  d_model: 128
+  n_layers: 6
+  n_heads: 4
+  dropout: 0.1
+  max_len: 256
+  time_encoding: sinusoidal_age
+  value_encoding: none
+  attention: mha
+  norm: layernorm
+  ffn: gelu_mlp
+  head: competing_risk

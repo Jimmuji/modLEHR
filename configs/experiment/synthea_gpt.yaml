@@ -1,0 +1,13 @@
+# Plain GPT baseline on Synthea.
+defaults: [../data/synthea.yaml, ../model/gpt_baseline.yaml]
+train:
+  out_dir: runs/synthea_gpt
+  batch_size: 64
+  steps: 3000
+  lr: 6.0e-4
+  warmup: 200
+  eval_every: 250
+evaluate:
+  landmarks: [40, 50, 60, 70]
+  horizon_years: 5
+  min_cases: 20
