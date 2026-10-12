@@ -100,3 +100,19 @@ def test_rope_age_depends_only_on_age_differences():
     # but changing the gap between events does
     y["ages"][:, 5:] += 3.0
     assert not torch.allclose(m(x), m(y), atol=1e-4)
+
+
+def test_alibi_age_depends_only_on_age_differences():
+    m, x = model(attention="alibi_age", time_encoding="none"), batch()
+    y = {k: v.clone() for k, v in x.items()}
+    y["ages"] = y["ages"] + 12.0
+    assert torch.allclose(m(x), m(y), atol=1e-4)
+    y["ages"][:, 5:] += 3.0
+    assert not torch.allclose(m(x), m(y), atol=1e-4)
+
+
+def test_alibi_age_penalizes_older_events():
+    from modlehr.model.layers import alibi_age
+
+    attn = alibi_age(d_model=8, n_heads=2)
+    assert torch.all(attn.slopes > 0) and attn.slopes[0, 0] > attn.slopes[0, 1]  # each head its own time span

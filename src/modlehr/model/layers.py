@@ -20,11 +20,14 @@ class Attention(nn.Module):
     n_kv_heads < n_heads gives grouped-query attention (query heads share key/value heads).
     rope="index" rotates queries and keys by event position; rope="age" rotates them by the
     patient's age at each event, so attention depends on how many years apart two events are,
-    not on how many events lie between them.
+    not on how many events lie between them. age_bias=True adds ALiBi's linear penalty, but on
+    years rather than positions: head h subtracts slope_h * (years between query and key) from
+    its scores, so each head looks back over a different time span.
     """
 
     def __init__(self, d_model: int, n_heads: int, dropout: float = 0.0, n_kv_heads: int | None = None,
-                 rope: str | None = None, rope_base: float = 10000.0, age_scale: float = 1.0):
+                 rope: str | None = None, rope_base: float = 10000.0, age_scale: float = 1.0,
+                 age_bias: bool = False, max_slope_exponent: float = 8.0):
         super().__init__()
         if d_model % n_heads:
             raise ValueError("d_model must be divisible by n_heads")
@@ -43,6 +46,10 @@ class Attention(nn.Module):
         self.dropout = dropout
         inv_freq = rope_base ** (-torch.arange(0, self.head_dim, 2, dtype=torch.float32) / self.head_dim)
         self.register_buffer("inv_freq", inv_freq, persistent=False)
+        self.age_bias = age_bias
+        # ALiBi slopes: a geometric sequence from 2^(-8/n) down to 2^-8, one per head (Press et al., 2022)
+        slopes = 2.0 ** (-max_slope_exponent * torch.arange(1, n_heads + 1, dtype=torch.float32) / n_heads)
+        self.register_buffer("slopes", slopes.view(1, n_heads, 1, 1), persistent=False)
 
     def _rotate(self, x: torch.Tensor, positions: torch.Tensor) -> torch.Tensor:
         """x: [B, H, T, D]; positions: [B, T]. Rotates pairs of dimensions by position * frequency."""
@@ -66,7 +73,13 @@ class Attention(nn.Module):
         if self.n_kv < self.n_heads:
             k = k.repeat_interleave(self.n_heads // self.n_kv, dim=1)
             v = v.repeat_interleave(self.n_heads // self.n_kv, dim=1)
-        y = F.scaled_dot_product_attention(q, k, v, attn_mask=mask, dropout_p=self.dropout if self.training else 0.0)
+        attn_mask = mask
+        if self.age_bias:
+            if ages is None:
+                raise ValueError("age_bias needs ages")
+            gap = (ages.unsqueeze(-1) - ages.unsqueeze(-2)).clamp(min=0.0).unsqueeze(1) * self.age_scale  # [B, 1, T, T]
+            attn_mask = (-self.slopes * gap).to(q.dtype).masked_fill(~mask, float("-inf"))
+        y = F.scaled_dot_product_attention(q, k, v, attn_mask=attn_mask, dropout_p=self.dropout if self.training else 0.0)
         return self.out(y.transpose(1, 2).reshape(b, t, -1))
 
 
@@ -92,6 +105,12 @@ def rope_index(d_model: int, n_heads: int, dropout: float = 0.0, **options) -> A
 def rope_age(d_model: int, n_heads: int, dropout: float = 0.0, **options) -> Attention:
     """Rotary embedding over age: attention sees the years between events."""
     return Attention(d_model, n_heads, dropout, rope="age", **options)
+
+
+@register("attention", "alibi_age")
+def alibi_age(d_model: int, n_heads: int, dropout: float = 0.0, **options) -> Attention:
+    """ALiBi over age: a per-head linear penalty on the years between events (BLOOM and MPT use ALiBi over positions)."""
+    return Attention(d_model, n_heads, dropout, age_bias=True, **options)
 
 
 @register("norm", "layernorm")

@@ -26,3 +26,6 @@ def test_prepare_train_evaluate_generate(tiny_config):
     history = PreparedSplit(prepared / "held_out.npz").subject(0)
     events = sample_future(model, vocab, history, start_age=50.0, horizon_years=30.0, seed=1)
     assert all(50.0 < age <= 80.0 and token in vocab.targets for age, token in events)
+    already = {vocab.tokens[t] for t in history["tokens"][history["ages"] <= 50.0]}
+    sampled = [token for _, token in events]
+    assert len(sampled) == len(set(sampled)) and not already & set(sampled)  # first occurrences stay first

@@ -6,7 +6,11 @@
     train: ...     # optimization
     evaluate: ...  # prediction tasks
 
-Paths inside the config are relative to the directory the command is run from.
+Paths inside the config are relative to the directory the command is run from. Any value can
+be overridden on the command line without a new file, as section.key=value with the value
+written in YAML:
+
+    modlehr train --config CONFIG --set model.attention=gqa --set "model.attention_options={n_kv_heads: 2}"
 """
 
 from __future__ import annotations
@@ -91,6 +95,7 @@ class EvaluateConfig:
     min_cases: int = 20
     split: str = "held_out"
     batch_size: int = 256
+    likelihood: bool = True  # also report the held-out negative log-likelihood (event and time parts)
 
 
 @dataclass
@@ -141,3 +146,20 @@ def load_config(path: str | Path) -> Config:
         train=_section(TrainConfig, raw.get("train")),
         evaluate=_section(EvaluateConfig, raw.get("evaluate")),
     )
+
+
+SECTIONS = ("data", "model", "train", "evaluate")
+
+
+def apply_overrides(cfg: Config, items: list[str]) -> Config:
+    """Apply section.key=value overrides in place; the value is parsed as YAML."""
+    for item in items or []:
+        key, sep, raw = item.partition("=")
+        section, _, name = key.strip().partition(".")
+        part = getattr(cfg, section, None) if section in SECTIONS else None
+        if not sep or part is None or name not in {f.name for f in fields(part)}:
+            raise ValueError(f"cannot apply '{item}': expected section.key=value with section one of {SECTIONS}")
+        if name == "events":
+            raise ValueError("data.events cannot be overridden on the command line; edit the data config")
+        setattr(part, name, yaml.safe_load(raw))
+    return cfg

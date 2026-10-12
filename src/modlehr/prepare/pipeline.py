@@ -2,7 +2,8 @@
 
 Output directory:
     vocab.json      input and target vocabularies
-    prepare.json    value statistics or bin cut points, target counts, exposure, the data config
+    prepare.json    the data config, per-rule counts (codes matched, tokens, tokens kept), value
+                    statistics or bin cut points, target counts and exposure in the training split
     <split>.npz     flat arrays per split (see prepare.timeline)
 """
 
@@ -62,6 +63,26 @@ def tokenize(events: pd.DataFrame, cfg: DataConfig) -> pd.DataFrame:
     return out
 
 
+def rule_summary(events: pd.DataFrame, frame: pd.DataFrame, cfg: DataConfig, kept: set[str]) -> list[dict]:
+    """Per event rule: MEDS codes matched, tokens after grouping or binning, tokens kept by the
+    frequency filter, and the events those kept tokens account for (all splits)."""
+    out = []
+    for i, rule in enumerate(cfg.events):
+        tokens = frame.loc[frame["rule"] == i, "token"]
+        out.append({"rule": rule.name, "role": rule.role,
+                    "codes": int(events.loc[events["rule"] == i, "code"].nunique()),
+                    "tokens": int(tokens.nunique()), "kept": int(tokens[tokens.isin(kept)].nunique()),
+                    "events": int(tokens.isin(kept).sum())})
+    return out
+
+
+def format_rules(rules: list[dict]) -> list[str]:
+    lines = [f"{'rule':18} {'role':12} {'codes':>8} {'tokens':>8} {'kept':>8} {'events':>12}"]
+    for r in rules:
+        lines.append(f"{r['rule']:18} {r['role']:12} {r['codes']:8,} {r['tokens']:8,} {r['kept']:8,} {r['events']:12,}")
+    return lines
+
+
 def run_prepare(cfg: DataConfig, log=print) -> dict:
     out_dir = Path(cfg.prepared_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -90,6 +111,7 @@ def run_prepare(cfg: DataConfig, log=print) -> dict:
     kept = set(counts[counts >= cfg.min_subjects_per_token].index)
     targets = sorted(set(frame.loc[frame["role"] == "target", "token"]) & kept)
     vocab = Vocabulary.build(sorted(kept), targets)
+    meta["rules"] = rule_summary(events, frame, cfg, kept)
     frame = frame.loc[frame["token"].isin(kept)].copy()
     frame["token_id"] = frame["token"].map(vocab.token_index).astype(np.int32)
 
@@ -119,9 +141,56 @@ def run_prepare(cfg: DataConfig, log=print) -> dict:
         log(f"[prepare] {split}: {summary[split]['subjects']:,} subjects, {summary[split]['events']:,} events")
 
     vocab.save(out_dir / "vocab.json")
+    for line in format_rules(meta["rules"]):
+        log(f"[prepare] {line}")
     meta["summary"] = summary
     meta["vocab_size"] = len(vocab.tokens)
     meta["n_targets"] = len(vocab.targets)
     (out_dir / "prepare.json").write_text(json.dumps(meta, indent=1))
     log(f"[prepare] vocabulary {len(vocab.tokens):,} tokens, {len(vocab.targets):,} targets → {out_dir}")
     return meta
+
+
+def is_current(cfg: DataConfig) -> bool:
+    """True if prepared_dir holds a complete prepare run made with this exact data config."""
+    out_dir = Path(cfg.prepared_dir)
+    needed = [out_dir / "prepare.json", out_dir / "vocab.json"] + [out_dir / f"{s}.npz" for s in SPLITS]
+    if not all(p.exists() for p in needed):
+        return False
+    stored = json.loads((out_dir / "prepare.json").read_text()).get("data_config")
+    return stored == json.loads(json.dumps(asdict(cfg)))
+
+
+def describe(cfg: DataConfig, top: int = 10) -> list[str]:
+    """A readable summary of a prepared dataset (`modlehr info`)."""
+    out_dir = Path(cfg.prepared_dir)
+    meta_path = out_dir / "prepare.json"
+    if not meta_path.exists():
+        return [f"{out_dir} has no prepare.json; run `modlehr prepare` first"]
+    meta = json.loads(meta_path.read_text())
+    vocab = Vocabulary.load(out_dir / "vocab.json")
+    data = meta["data_config"]
+    mode = data["value_mode"]
+    values = {"binned": f"binned into {data['n_bins']} training-quantile bins (code//Q1..Q{data['n_bins']})",
+              "continuous": "kept as numbers, scaled per measurement (training mean and SD, clipped to ±5)",
+              "none": "dropped; measurements enter as codes only"}.get(mode, mode)
+    lines = [f"prepared data   {out_dir}  (from {data['meds_dir']})",
+             f"values          {values}",
+             f"target grouping {data['target_grouping']}, tokens kept if seen in >= {data['min_subjects_per_token']} "
+             f"training subjects"]
+    for split, s in meta["summary"].items():
+        lines.append(f"{split:15} {s['subjects']:>9,} subjects {s['events']:>12,} events")
+    lines.append(f"vocabulary      {len(vocab.tokens):,} input tokens (with padding), {len(vocab.targets):,} prediction targets; "
+                 f"{meta['exposure_years']:,.0f} person-years in training")
+    if "rules" in meta:
+        lines += ["", *format_rules(meta["rules"])]
+    descriptions: dict[str, str] = {}
+    if Path(data["meds_dir"]).exists():
+        codes = open_meds(data["meds_dir"]).codes
+        descriptions = dict(zip(codes["code"].astype(str), codes["description"].fillna("").astype(str)))
+    order = np.argsort(meta["target_counts"])[::-1][:top]
+    lines += ["", f"most frequent targets in training (events):"]
+    for k in order:
+        name = vocab.targets[k]
+        lines.append(f"  {meta['target_counts'][k]:>8,}  {name:28} {descriptions.get(name, '')}")
+    return lines

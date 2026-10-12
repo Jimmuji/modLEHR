@@ -71,13 +71,29 @@ Risk of target k within a horizon H: `(lambda_k / Lambda) (1 - exp(-Lambda H))`.
 For each landmark age L and target k: inputs are all events up to L; a case has its first k in
 (L, L + H]; subjects who already had k are left out, and so are subjects whose record ends
 before L + H without k. AUC per (target, landmark) with at least `min_cases` cases and
-controls; the summary is the mean over those pairs.
+controls; the summary is the mean over those pairs. The task definition lives in one place,
+`modlehr/evaluate/task.py`, and the model evaluation and the classical baselines both use it.
+
+AUC is computed within an age group and only ranks patients, so it cannot see whether a model
+predicts timing well; a time encoding or a different head can matter without moving AUC. The
+evaluation therefore also reports the held-out negative log-likelihood of the training
+objective, split into the event part and the time part.
+
+Classical baselines (`modlehr baseline`: logistic regression and gradient boosting on token
+indicators and latest values) run on the same pairs. They answer two questions before any
+architecture comparison: has the transformer learned more than the inputs say on their own, and
+is there signal beyond single features at all. On Synthea at 3,000 steps the logistic regression
+still beats the transformer.
+
+Comparisons (`modlehr compare`) average each pair's AUC over seeds, then take the paired
+difference against a reference run over the pairs both scored.
 
 ## Model
 
 `input head → N blocks → final norm → head`, assembled from registered parts:
 
-- attention: `mha` (causal, key padding masked)
+- attention: `mha` (causal, key padding masked), `gqa`, `rope` (rotary over event order),
+  `rope_age` (rotary over age), `alibi_age` (ALiBi penalty on years between events)
 - norm: `layernorm`, `rmsnorm`
 - ffn: `gelu_mlp`, `swiglu`
 - time encoding: `sinusoidal_age`, `none`
@@ -87,10 +103,15 @@ controls; the summary is the mean over those pairs.
 The input head takes an optional `extra` tensor added to each event's embedding; that is where
 other modalities (clinical notes, images) plug in later.
 
+Sampling (`modlehr generate`) never draws a target already in the history or already drawn,
+because targets are first occurrences.
+
 ## Not yet
 
-- other attention variants and positional schemes (GQA, MLA, linear attention, RoPE over time)
+- other attention variants (multi-head latent attention, linear attention) and mixture-of-experts
+  feed-forward layers
 - adapters beyond Synthea (MIMIC-IV, eICU and EHRSHOT have existing MEDS ETLs)
+- ICD-9 to ICD-10 through the CMS GEMs, and a phecode grouping
 - clinical notes through `text_value`, then images
+- calibration of predicted risks; sampled against observed incidence by age
 - MEDS-DEV tasks and label files (`subject_id, prediction_time, boolean_value`)
-- multiple seeds and confidence intervals in evaluation
