@@ -290,8 +290,8 @@ each run against the first: mean AUC, held-out negative log-likelihood, and the 
 difference over the pairs both scored, with a 95% interval.
 
 `scripts/compare_synthea.sh` trains the baseline and every variant over seeds 1 to 3, fits the
-classical baselines, and prints the comparison (about 75 minutes on Apple MPS;
-`SEEDS="1" scripts/compare_synthea.sh` for one seed).
+classical baselines, and prints the comparison. Each run takes about 7 minutes on Apple MPS, so the
+15 runs take close to two hours; `SEEDS="1" scripts/compare_synthea.sh` runs one seed.
 
 ## Data format: MEDS
 
@@ -371,25 +371,34 @@ defaults: [docs/configuration.md](docs/configuration.md).
 ## Results so far
 
 Synthea, 22,962 patients; 164 targets; landmarks 40 to 70; 5-year horizon; 124 (target, landmark)
-pairs scored on 4,564 held-out patients. Each model has 1.25M parameters (GQA 1.16M) and 3,000
-training steps. One seed each; the difference column is the mean paired AUC difference against the
-plain GPT, with its 95% interval.
+pairs scored on 4,564 held-out patients. Each transformer has 1.25M parameters (GQA 1.16M) and
+3,000 training steps, and is trained with seeds 1, 2 and 3; each pair's AUC is averaged over the
+seeds before comparing. The difference is the mean paired AUC difference against the plain GPT,
+with its 95% interval.
 
 | Run | Mean AUC | Difference | Held-out NLL |
 |---|---|---|---|
-| Plain GPT (binned values) | 0.589 | | 4.781 |
-| Rotary over age (`rope_age`) | 0.596 | +0.007 (+0.001 to +0.013) | 4.769 |
-| Grouped-query attention (`gqa`) | 0.590 | +0.001 (−0.006 to +0.008) | 4.784 |
-| Values read directly (`value_encoding: mlp`) | 0.588 | −0.001 (−0.008 to +0.005) | 4.774 |
-| Logistic regression, same inputs | 0.611 | +0.022 (+0.011 to +0.034) | |
-| Gradient boosting, same inputs | 0.606 | +0.017 (+0.006 to +0.027) | |
+| Plain GPT (binned values) | 0.590 | | 4.778 |
+| Rotary over age (`rope_age`) | 0.594 | +0.004 (+0.000 to +0.008) | 4.773 |
+| ALiBi over age (`alibi_age`) | 0.588 | −0.002 (−0.006 to +0.001) | 4.761 |
+| Grouped-query attention (`gqa`) | 0.589 | −0.001 (−0.005 to +0.003) | 4.770 |
+| Values read directly (`value_encoding: mlp`) | 0.588 | −0.002 (−0.006 to +0.003) | 4.771 |
+| Logistic regression, same inputs | 0.611 | +0.022 (+0.010 to +0.033) | |
+| Gradient boosting, same inputs | 0.606 | +0.016 (+0.005 to +0.027) | |
 
-Two things to read from this. First, the logistic regression beats every transformer: at 3,000
-steps the models are undertrained, and comparisons between architectures should be made once the
-baseline at least matches the classical models. Second, Synthea generates diseases from a small
-number of rules, so the signal it holds is limited; it is the place to check that the pipeline
-runs, not where an architecture should be judged. Model comparisons belong on real records
-(MIMIC-IV).
+How to read it:
+
+- **Only rotary attention over age moves AUC**, and only just: +0.004, with the interval touching
+  zero. With one seed the same comparison gave +0.007; averaging seeds roughly halved it, which is
+  why `modlehr compare` averages them.
+- **The likelihoods do not separate the variants.** Across the three seeds of one variant the
+  held-out NLL varies by up to 0.03; the differences between variants are 0.01 to 0.02.
+- **The classical models beat every transformer.** At 3,000 steps the transformers are
+  undertrained, so architecture comparisons should wait until the baseline at least matches the
+  logistic regression.
+- **Synthea limits what can be learned.** It generates diseases from a small number of rules, so
+  the signal it holds is limited. It is the place to check that the pipeline runs, not where an
+  architecture should be judged; model comparisons belong on real records (MIMIC-IV).
 
 ## Other data sources
 
