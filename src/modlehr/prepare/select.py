@@ -41,17 +41,23 @@ def classify_codes(codes: pd.DataFrame, rules: list[EventRule]) -> pd.Series:
     return pd.Series(assigned[keep], index=code[keep].to_numpy())
 
 
-def load_events(ds: MedsDataset, rules: list[EventRule]) -> pd.DataFrame:
-    """Matched events from every shard, with columns subject_id, code, age, numeric_value,
-    text_value and rule (index into rules)."""
-    code_rule = classify_codes(ds.codes, rules)
-    wanted = set(code_rule.index) | {meds.birth_code}
-    frames = [ds.read_shard(shard, codes=wanted) for shard in ds.shards()]
-    events = pd.concat(frames, ignore_index=True)
+def read_events(ds: MedsDataset, shard, code_rule: pd.Series) -> pd.DataFrame:
+    """Matched events of one shard, with columns subject_id, code, age, numeric_value, text_value
+    and rule (index into the rules). code_rule comes from classify_codes.
 
+    MEDS keeps all of a subject's events in one shard, so ages can be computed shard by shard.
+    """
+    wanted = set(code_rule.index) | {meds.birth_code}
+    events = ds.read_shard(shard, codes=wanted)
     birth = events.loc[events["code"] == meds.birth_code].groupby("subject_id")["time"].min()
     events = events.loc[(events["code"] != meds.birth_code) & events["subject_id"].isin(birth.index)].copy()
     age = (events["time"] - events["subject_id"].map(birth)).dt.total_seconds() / SECONDS_PER_YEAR
     events["age"] = age.fillna(0.0).clip(lower=0.0).astype("float32")
     events["rule"] = events["code"].map(code_rule).astype(int)
     return events.drop(columns="time")
+
+
+def load_events(ds: MedsDataset, rules: list[EventRule]) -> pd.DataFrame:
+    """Matched events from every shard at once. Fine for small datasets; `prepare` reads shard by shard."""
+    code_rule = classify_codes(ds.codes, rules)
+    return pd.concat([read_events(ds, shard, code_rule) for shard in ds.shards()], ignore_index=True)

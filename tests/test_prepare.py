@@ -10,6 +10,7 @@ import pandas as pd
 from modlehr.config import load_config
 from modlehr.data.meds_io import open_meds
 from modlehr.prepare.grouping import icd10_3char
+from modlehr.prepare.dataset import open_split
 from modlehr.prepare.pipeline import run_prepare
 from modlehr.prepare.timeline import build_split
 from modlehr.prepare.vocabulary import PAD, Vocabulary
@@ -57,10 +58,8 @@ def test_prepare_tiny(tiny_config):
     assert vocab.tokens[0] == PAD
     assert "MEDS_DEATH" in vocab.targets and "SNOMEDCT//1001" in vocab.targets
     assert "SNOMEDCT//2001" not in vocab.tokens  # findings are not selected by the rules
-    with np.load(out / "train.npz") as z:
-        values = z["values"]
-        ages = z["ages"]
-        offsets = z["offsets"]
+    train = open_split(out, "train")
+    values, ages, offsets = np.asarray(train.arrays["values"]), np.asarray(train.arrays["ages"]), train.offsets
     observed = values[~np.isnan(values)]
     assert abs(observed.mean()) < 0.2 and 0.8 < observed.std() < 1.2  # scaled per measurement
     assert np.all(np.diff(ages[offsets[0]:offsets[1]]) >= 0)  # sorted by age

@@ -17,7 +17,7 @@ import yaml
 
 from modlehr.config import Config
 from modlehr.model.model import ModLEHR
-from modlehr.prepare.dataset import PreparedSplit, fixed_windows, random_windows
+from modlehr.prepare.dataset import fixed_windows, open_split, random_windows
 from modlehr.prepare.vocabulary import Vocabulary
 
 
@@ -80,8 +80,8 @@ def train(cfg: Config, log=print) -> Path:
     log(f"[train] {model.n_parameters() / 1e6:.2f}M parameters, {len(vocab.tokens):,} tokens, "
         f"{len(vocab.targets):,} targets, device {device}")
 
-    train_split = PreparedSplit(prepared / f"{meds.train_split}.npz")
-    tune_split = PreparedSplit(prepared / f"{meds.tuning_split}.npz")
+    train_split = open_split(prepared, meds.train_split)
+    tune_split = open_split(prepared, meds.tuning_split)
     tune_batches = fixed_windows(tune_split, cfg.train.batch_size, cfg.model.max_len, cfg.train.eval_batches)
     opt = make_optimizer(model, cfg.train)
 

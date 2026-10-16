@@ -129,11 +129,11 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "generate":
         from modlehr.evaluate.run import load_model
         from modlehr.generate.sample import sample_future
-        from modlehr.prepare.dataset import PreparedSplit
+        from modlehr.prepare.dataset import open_split
         from modlehr.train.loop import pick_device
         device = pick_device(cfg.train.device)
         model, vocab = load_model(checkpoint, Path(cfg.data.prepared_dir), device)
-        split = PreparedSplit(Path(cfg.data.prepared_dir) / f"{args.split}.npz")
+        split = open_split(cfg.data.prepared_dir, args.split)
         from modlehr.data.meds_io import open_meds
         names = {}
         if Path(cfg.data.meds_dir).exists():

@@ -1,7 +1,15 @@
-"""Load a prepared split and turn timelines into padded batches."""
+"""Prepared splits on disk, and batches made from them.
+
+A prepared split is a directory with one .npy file per array, read memory-mapped, so a split
+larger than memory can still be trained on:
+
+    subject_ids  [n_subjects]       offsets      [n_subjects + 1]  (events of subject i are offsets[i]:offsets[i+1])
+    tokens ages values next_target dt loss_mask   [n_events]       (see prepare.timeline)
+"""
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -9,13 +17,21 @@ import torch
 
 from modlehr.prepare.timeline import ARRAYS
 
+FILES = ("subject_ids", "offsets") + ARRAYS
+DTYPES = {"subject_ids": np.int64, "offsets": np.int64, "tokens": np.int32, "ages": np.float32, "values": np.float32,
+          "next_target": np.int32, "dt": np.float32, "loss_mask": np.bool_}
+
 
 class PreparedSplit:
     def __init__(self, path: str | Path):
-        with np.load(path) as z:
-            self.arrays = {k: z[k] for k in z.files}
-        self.offsets = self.arrays["offsets"]
-        self.subject_ids = self.arrays["subject_ids"]
+        path = Path(path)
+        if path.suffix == ".npz":  # layout written before shard-by-shard prepare
+            with np.load(path) as z:
+                self.arrays = {k: z[k] for k in z.files}
+        else:
+            self.arrays = {k: np.load(path / f"{k}.npy", mmap_mode="r") for k in FILES}
+        self.offsets = np.asarray(self.arrays["offsets"])
+        self.subject_ids = np.asarray(self.arrays["subject_ids"])
 
     def __len__(self) -> int:
         return len(self.subject_ids)
@@ -26,7 +42,61 @@ class PreparedSplit:
     def subject(self, i: int, start: int = 0, stop: int | None = None) -> dict[str, np.ndarray]:
         a, b = self.offsets[i], self.offsets[i + 1]
         stop = (b - a) if stop is None else stop
-        return {k: self.arrays[k][a + start:a + stop] for k in ARRAYS}
+        return {k: np.asarray(self.arrays[k][a + start:a + stop]) for k in ARRAYS}
+
+
+def open_split(prepared_dir: str | Path, split: str) -> PreparedSplit:
+    return PreparedSplit(Path(prepared_dir) / split)
+
+
+class SplitWriter:
+    """Appends one shard's arrays at a time, then joins them into one memory-mappable split."""
+
+    def __init__(self, out_dir: Path):
+        self.out_dir = Path(out_dir)
+        self.chunk_dir = self.out_dir / "_chunks"
+        if self.out_dir.exists():
+            shutil.rmtree(self.out_dir)
+        self.chunk_dir.mkdir(parents=True)
+        self.n_chunks = 0
+
+    def append(self, arrays: dict[str, np.ndarray]) -> None:
+        if len(arrays["subject_ids"]) == 0:
+            return
+        for k in FILES:
+            np.save(self.chunk_dir / f"{self.n_chunks:05d}_{k}.npy", arrays[k])
+        self.n_chunks += 1
+
+    def close(self) -> dict[str, int]:
+        """Join the chunks into one split, subjects in ascending subject_id order.
+
+        The order does not depend on how the MEDS data was sharded, so the same data always gives
+        the same arrays, and the same seed draws the same training windows.
+        """
+        load = lambda i, k: np.load(self.chunk_dir / f"{i:05d}_{k}.npy", mmap_mode="r")  # noqa: E731
+        chunks = range(self.n_chunks)
+        sids = [np.asarray(load(i, "subject_ids")) for i in chunks]
+        offs = [np.asarray(load(i, "offsets")) for i in chunks]
+        subject_ids = np.concatenate(sids) if sids else np.zeros(0, dtype=np.int64)
+        chunk_of = np.concatenate([np.full(len(x), i) for i, x in enumerate(sids)]) if sids else np.zeros(0, int)
+        start = np.concatenate([o[:-1] for o in offs]) if offs else np.zeros(0, np.int64)
+        stop = np.concatenate([o[1:] for o in offs]) if offs else np.zeros(0, np.int64)
+        if len(np.unique(subject_ids)) != len(subject_ids):
+            raise ValueError("a subject appears in more than one MEDS shard; MEDS keeps each subject in one shard")
+        order = np.argsort(subject_ids, kind="stable")
+        offsets = np.concatenate([[0], np.cumsum(stop[order] - start[order])]).astype(np.int64)
+
+        for k in ARRAYS:
+            parts = [load(i, k) for i in chunks]
+            out = np.lib.format.open_memmap(self.out_dir / f"{k}.npy", mode="w+", dtype=DTYPES[k], shape=(int(offsets[-1]),))
+            for j, s in enumerate(order):
+                out[offsets[j]:offsets[j + 1]] = parts[chunk_of[s]][start[s]:stop[s]]
+            out.flush()
+            del out, parts
+        np.save(self.out_dir / "subject_ids.npy", subject_ids[order].astype(np.int64))
+        np.save(self.out_dir / "offsets.npy", offsets)
+        shutil.rmtree(self.chunk_dir)
+        return {"subjects": int(len(subject_ids)), "events": int(offsets[-1])}
 
 
 def collate(rows: list[dict[str, np.ndarray]]) -> dict[str, torch.Tensor]:

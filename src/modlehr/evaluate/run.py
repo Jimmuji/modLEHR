@@ -29,7 +29,7 @@ from sklearn.metrics import roc_auc_score
 from modlehr.config import Config, ModelConfig
 from modlehr.evaluate.task import history_before, landmark_task, summarize
 from modlehr.model.model import ModLEHR
-from modlehr.prepare.dataset import PreparedSplit, collate
+from modlehr.prepare.dataset import PreparedSplit, collate, open_split
 from modlehr.prepare.timeline import first_target_ages
 from modlehr.prepare.vocabulary import Vocabulary
 from modlehr.train.loop import pick_device, to_device
@@ -83,7 +83,7 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
     prepared = Path(cfg.data.prepared_dir)
     device = pick_device(cfg.train.device)
     model, vocab = load_model(checkpoint, prepared, device)
-    split = PreparedSplit(prepared / f"{cfg.evaluate.split}.npz")
+    split = open_split(prepared, cfg.evaluate.split)
     first = first_target_ages(split.arrays["tokens"], split.arrays["ages"], split.offsets, vocab)
     H, min_cases = cfg.evaluate.horizon_years, cfg.evaluate.min_cases
 

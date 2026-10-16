@@ -15,7 +15,7 @@ from modlehr.evaluate.baselines import run_baselines
 from modlehr.evaluate.compare import compare, group_runs
 from modlehr.evaluate.run import evaluate
 from modlehr.evaluate.task import landmark_task
-from modlehr.prepare.dataset import PreparedSplit
+from modlehr.prepare.dataset import open_split
 from modlehr.prepare.pipeline import describe, is_current, run_prepare
 from modlehr.prepare.vocabulary import Vocabulary
 from modlehr.train.loop import train
@@ -52,7 +52,7 @@ def test_landmark_task_labels(tiny_config):
     run_prepare(tiny_config.data, log=QUIET)
     prepared = Path(tiny_config.data.prepared_dir)
     vocab = Vocabulary.load(prepared / "vocab.json")
-    split = PreparedSplit(prepared / "held_out.npz")
+    split = open_split(prepared, "held_out")
     task = landmark_task(split, vocab, 50.0, 10.0)
     for k in range(len(vocab.targets)):
         keep, case = task.labels(k)

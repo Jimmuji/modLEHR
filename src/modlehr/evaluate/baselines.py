@@ -39,7 +39,7 @@ from sklearn.metrics import roc_auc_score
 
 from modlehr.config import Config
 from modlehr.evaluate.task import LandmarkTask, history_before, landmark_task, summarize
-from modlehr.prepare.dataset import PreparedSplit
+from modlehr.prepare.dataset import PreparedSplit, open_split
 from modlehr.prepare.timeline import first_target_ages
 from modlehr.prepare.vocabulary import Vocabulary
 
@@ -77,8 +77,8 @@ def run_baselines(cfg: Config, models: tuple[str, ...] = MODELS, log=print) -> d
     vocab = Vocabulary.load(prepared / "vocab.json")
     meta = json.loads((prepared / "prepare.json").read_text())
     with_values = meta["data_config"]["value_mode"] == "continuous"
-    train_split = PreparedSplit(prepared / f"{meds.train_split}.npz")
-    eval_split = PreparedSplit(prepared / f"{cfg.evaluate.split}.npz")
+    train_split = open_split(prepared, meds.train_split)
+    eval_split = open_split(prepared, cfg.evaluate.split)
     first_train = first_target_ages(train_split.arrays["tokens"], train_split.arrays["ages"], train_split.offsets, vocab)
     first_eval = first_target_ages(eval_split.arrays["tokens"], eval_split.arrays["ages"], eval_split.offsets, vocab)
     H, min_cases, n_tokens = cfg.evaluate.horizon_years, cfg.evaluate.min_cases, len(vocab.tokens)

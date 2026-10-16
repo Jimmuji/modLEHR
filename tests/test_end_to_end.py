@@ -5,7 +5,7 @@ from pathlib import Path
 
 from modlehr.evaluate.run import evaluate, load_model
 from modlehr.generate.sample import sample_future
-from modlehr.prepare.dataset import PreparedSplit
+from modlehr.prepare.dataset import open_split
 from modlehr.prepare.pipeline import run_prepare
 from modlehr.train.loop import train
 
@@ -23,7 +23,7 @@ def test_prepare_train_evaluate_generate(tiny_config):
 
     prepared = Path(tiny_config.data.prepared_dir)
     model, vocab = load_model(checkpoint, prepared, "cpu")
-    history = PreparedSplit(prepared / "held_out.npz").subject(0)
+    history = open_split(prepared, "held_out").subject(0)
     events = sample_future(model, vocab, history, start_age=50.0, horizon_years=30.0, seed=1)
     assert all(50.0 < age <= 80.0 and token in vocab.targets for age, token in events)
     already = {vocab.tokens[t] for t in history["tokens"][history["ages"] <= 50.0]}
