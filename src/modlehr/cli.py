@@ -59,6 +59,8 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--out", help="default: <train.out_dir>/evaluate.csv")
         if name == "baseline":
             p.add_argument("--models", default="logistic,gbm", help="comma-separated: logistic, gbm")
+            p.add_argument("--gbm-features", type=int, default=2000,
+                           help="gradient boosting uses this many of the most common feature columns")
         if name in ("train", "run"):
             p.add_argument("--resume", action="store_true", help="continue from <train.out_dir>/last.pt")
             p.add_argument("--stop-after", type=int, metavar="STEP",
@@ -120,7 +122,7 @@ def main(argv: list[str] | None = None) -> None:
         evaluate(cfg, checkpoint, args.out)
     elif args.command == "baseline":
         from modlehr.evaluate.baselines import run_baselines
-        run_baselines(cfg, tuple(m.strip() for m in args.models.split(",") if m.strip()))
+        run_baselines(cfg, tuple(m.strip() for m in args.models.split(",") if m.strip()), args.gbm_features)
     elif args.command == "run":
         from modlehr.evaluate.run import evaluate
         from modlehr.prepare.pipeline import is_current, run_prepare

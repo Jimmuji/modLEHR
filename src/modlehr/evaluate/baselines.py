@@ -11,6 +11,10 @@ Features for a subject at landmark L, built from the prepared timeline:
     with value_mode: continuous, one more column per token: its latest scaled value before L
     (0, the training mean, when there is none)
 
+Features are stored sparse, so vocabularies of tens of thousands of tokens fit in memory.
+Gradient boosting needs a dense matrix and uses the max_dense_features columns that are
+non-empty for the most training subjects (all of them when there are fewer).
+
 Models:
 
     logistic   L2-regularized logistic regression
@@ -35,6 +39,7 @@ import pandas as pd
 from sklearn.ensemble import HistGradientBoostingClassifier
 from sklearn.exceptions import ConvergenceWarning
 from sklearn.linear_model import LogisticRegression
+from scipy import sparse
 from sklearn.metrics import roc_auc_score
 
 from modlehr.config import Config
@@ -48,29 +53,42 @@ MODELS = ("logistic", "gbm")
 
 def make_model(name: str, seed: int):
     if name == "logistic":
-        return LogisticRegression(C=0.5, max_iter=3000)
+        return LogisticRegression(C=0.5, tol=1e-6, max_iter=10000)  # converged tightly: it is the yardstick
     if name == "gbm":
         return HistGradientBoostingClassifier(max_iter=300, learning_rate=0.06, early_stopping=True, random_state=seed)
     raise ValueError(f"unknown baseline '{name}'; available: {MODELS}")
 
 
-def landmark_features(split: PreparedSplit, task: LandmarkTask, n_tokens: int, with_values: bool) -> np.ndarray:
-    """[len(task.subjects), n_tokens (x2 with values)]: token present by L, and its latest value."""
-    X = np.zeros((len(task.subjects), n_tokens * (2 if with_values else 1)), dtype=np.float32)
+def landmark_features(split: PreparedSplit, task: LandmarkTask, n_tokens: int, with_values: bool) -> sparse.csr_matrix:
+    """Sparse [len(task.subjects), n_tokens (x2 with values)]: token present by L, and its latest value."""
+    rows, cols, vals = [], [], []
     for row, i in enumerate(task.subjects):
         h = history_before(split, i, task.landmark)
-        X[row, h["tokens"]] = 1.0
+        present = np.unique(h["tokens"])
+        present = present[present != 0]
+        rows.append(np.full(len(present), row)), cols.append(present), vals.append(np.ones(len(present), np.float32))
         if with_values:
             has = ~np.isnan(h["values"])
             if has.any():
                 tokens, values = h["tokens"][has][::-1], h["values"][has][::-1]  # latest first
                 unique, first = np.unique(tokens, return_index=True)
-                X[row, n_tokens + unique] = values[first]
-    X[:, 0] = 0.0  # padding
-    return X
+                rows.append(np.full(len(unique), row)), cols.append(n_tokens + unique), vals.append(values[first])
+    shape = (len(task.subjects), n_tokens * (2 if with_values else 1))
+    if not rows:
+        return sparse.csr_matrix(shape, dtype=np.float32)
+    return sparse.csr_matrix((np.concatenate(vals), (np.concatenate(rows), np.concatenate(cols))), shape=shape,
+                             dtype=np.float32)
 
 
-def run_baselines(cfg: Config, models: tuple[str, ...] = MODELS, log=print) -> dict[str, Path]:
+def dense_columns(X: sparse.csr_matrix, k: int) -> np.ndarray:
+    """The k columns that are non-empty for the most training rows, in their original order."""
+    if X.shape[1] <= k:
+        return np.arange(X.shape[1])
+    return np.sort(np.argsort(-X.getnnz(axis=0), kind="stable")[:k])
+
+
+def run_baselines(cfg: Config, models: tuple[str, ...] = MODELS, max_dense_features: int = 2000,
+                  log=print) -> dict[str, Path]:
     for name in models:
         make_model(name, 0)  # fail early on an unknown name
     prepared = Path(cfg.data.prepared_dir)
@@ -92,6 +110,9 @@ def run_baselines(cfg: Config, models: tuple[str, ...] = MODELS, log=print) -> d
         ev = landmark_task(eval_split, vocab, L, H, first_eval)
         X_tr = landmark_features(train_split, tr, n_tokens, with_values)
         X_ev = landmark_features(eval_split, ev, n_tokens, with_values)
+        if "gbm" in models:  # gradient boosting needs a dense matrix: keep the most common columns
+            keep_cols = dense_columns(X_tr, max_dense_features)
+            dense_tr, dense_ev = X_tr[:, keep_cols].toarray(), X_ev[:, keep_cols].toarray()
         fitted = 0
         for k, target in enumerate(vocab.targets):
             keep_e, case_e = ev.labels(k)
@@ -102,8 +123,9 @@ def run_baselines(cfg: Config, models: tuple[str, ...] = MODELS, log=print) -> d
             for name in models:
                 with warnings.catch_warnings():
                     warnings.simplefilter("ignore", ConvergenceWarning)
-                    clf = make_model(name, cfg.train.seed).fit(X_tr[keep_t], case_t[keep_t])
-                score = clf.predict_proba(X_ev[keep_e])[:, 1]
+                    tr_x, ev_x = (dense_tr, dense_ev) if name == "gbm" else (X_tr, X_ev)
+                    clf = make_model(name, cfg.train.seed).fit(tr_x[keep_t], case_t[keep_t])
+                score = clf.predict_proba(ev_x[keep_e])[:, 1]
                 rows[name].append({"target": target, "landmark": L, "cases": int(counts[0]), "controls": int(counts[1]),
                                    "auc": roc_auc_score(case_e[keep_e], score)})
             fitted += 1

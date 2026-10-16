@@ -61,7 +61,7 @@ With [uv](https://docs.astral.sh/uv/):
 git clone https://github.com/Jimmuji/modLEHR.git && cd modLEHR
 uv venv --python 3.13 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
-.venv/bin/python -m pytest          # 31 tests, about 6 seconds
+.venv/bin/python -m pytest          # 33 tests, about 7 seconds
 ```
 
 With plain pip: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
@@ -107,7 +107,7 @@ $ modlehr validate --meds-dir data/synthea_meds
 data/synthea_meds: 30 shards, 1,229 codes, 22,962 subjects; valid
 ```
 
-**3. Prepare timelines** (12 seconds):
+**3. Prepare timelines** (20 seconds):
 
 ```console
 $ modlehr prepare --config configs/experiment/synthea_gpt.yaml
@@ -138,14 +138,14 @@ $ modlehr train --config configs/experiment/synthea_gpt.yaml
 [train] best tuning loss 4.7806 → runs/synthea_gpt/best.pt
 ```
 
-**5. Evaluate, and check against classical models** (7 and 25 seconds):
+**5. Evaluate, and check against classical models** (7 and 30 seconds):
 
 ```console
 $ modlehr evaluate --config configs/experiment/synthea_gpt.yaml
 [evaluate] mean AUC 0.589 (95% CI 0.564 to 0.614) over 124 target and landmark pairs
 [evaluate] negative log-likelihood per prediction 4.781 (event 3.852, time 0.929) over 160,013 predictions
 $ modlehr baseline --config configs/experiment/synthea_gpt.yaml
-[baseline] logistic: mean AUC 0.611 (95% CI 0.586 to 0.637) over 124 pairs → runs/synthea_gpt_logistic/evaluate.csv
+[baseline] logistic: mean AUC 0.612 (95% CI 0.586 to 0.637) over 124 pairs → runs/synthea_gpt_logistic/evaluate.csv
 [baseline] gbm: mean AUC 0.606 (95% CI 0.579 to 0.633) over 124 pairs → runs/synthea_gpt_gbm/evaluate.csv
 ```
 
@@ -221,9 +221,14 @@ What the labels look like for one Synthea patient (subject 296, 220 events after
 | `SNOMEDCT//44054006` (type 2 diabetes) | 51.02 | Sleep disorder | 0.95 | yes |
 | `MEDS_DEATH` | 58.30 | censored | 0.00 | yes |
 
+It reads one MEDS shard at a time, in three passes (training values, training subjects per
+token, then every shard written to its split), so memory grows with the largest shard rather than
+with the dataset. Statistics such as bin cut points come from the training split only.
+
 Output: `vocab.json` (input and target vocabularies), `prepare.json` (the data config, per-rule
-counts, value statistics or bin cut points, target counts, training exposure) and one `.npz` per
-split. `modlehr info` prints a summary, including the most frequent targets.
+counts, value statistics or bin cut points, target counts, training exposure) and one directory
+per split holding one `.npy` file per array, read memory-mapped, with subjects in `subject_id`
+order whatever the sharding. `modlehr info` prints a summary, including the most frequent targets.
 
 ### train
 
@@ -232,6 +237,11 @@ from each, and minimizes the competing-risks negative log-likelihood (see
 [The model](#the-model)). Every `eval_every` steps it scores the same fixed tuning windows and
 keeps the checkpoint with the lowest tuning loss. The run directory gets `config.yaml` (the full
 resolved config), `log.jsonl` (one line per check), `best.pt` and `last.pt`.
+
+For long runs: `last.pt` is rewritten at every check with the optimizer and random-number state,
+so `modlehr train --resume` continues a stopped run exactly where it was, and `--stop-after STEP`
+ends a run early on purpose (a job's time limit). On a GPU, `train.precision: bf16` runs the forward
+pass in bfloat16 and `train.grad_accum: k` adds up the gradients of k batches per step.
 
 ### evaluate
 
@@ -255,8 +265,10 @@ Output: `evaluate.csv` (one row per pair: target, landmark, cases, controls, AUC
 
 Fits two classical models on exactly the same pairs: an L2-regularized logistic regression and
 histogram gradient boosting. Features are one column per input token (present by the landmark
-or not), plus the latest scaled value of each measurement when `value_mode: continuous`. Results
-go to `<out_dir>_logistic/` and `<out_dir>_gbm/` in the same format as `evaluate`.
+or not), plus the latest scaled value of each measurement when `value_mode: continuous`, stored
+sparse so large vocabularies fit; gradient boosting uses the 2,000 most common columns
+(`--gbm-features`). Results go to `<out_dir>_logistic/` and `<out_dir>_gbm/` in the same format as
+`evaluate`.
 
 Run it for every new dataset. If the logistic regression matches the transformer, the
 transformer has learned nothing the inputs did not already say. If gradient boosting does no
@@ -383,7 +395,7 @@ with its 95% interval.
 | ALiBi over age (`alibi_age`) | 0.588 | −0.002 (−0.006 to +0.001) | 4.761 |
 | Grouped-query attention (`gqa`) | 0.589 | −0.001 (−0.005 to +0.003) | 4.770 |
 | Values read directly (`value_encoding: mlp`) | 0.588 | −0.002 (−0.006 to +0.003) | 4.771 |
-| Logistic regression, same inputs | 0.611 | +0.022 (+0.010 to +0.033) | |
+| Logistic regression, same inputs | 0.612 | +0.022 (+0.011 to +0.034) | |
 | Gradient boosting, same inputs | 0.606 | +0.016 (+0.005 to +0.027) | |
 
 How to read it:
@@ -466,8 +478,9 @@ registers it is not imported; see [docs/extending.md](docs/extending.md).
 on several threads, and in our runs the same seed produced 23,056 and then 22,962 patients. Keep the
 converted MEDS directory rather than regenerating it, and compare models on the same copy.
 
-**Memory.** `prepare` holds every matched event in memory (10.3 million for Synthea). For larger
-sources, narrow the event rules first.
+**Memory.** `prepare` holds one MEDS shard at a time, plus the training values of every
+measurement (pass 1). Peak memory on Synthea is 1.5 GB. If a source's shards are very large, reshard
+it with the MEDS tools rather than narrowing the event rules.
 
 ## Roadmap
 

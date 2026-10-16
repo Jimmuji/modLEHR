@@ -136,9 +136,15 @@ the `description_regex` keeps only disorders as targets.
 | `eval_batches` | `20` | Fixed tuning batches per check, the same windows every time |
 | `seed` | `1` | Seeds batch sampling and initialization |
 | `device` | `auto` | `auto` picks CUDA, then Apple MPS, then CPU; or name one |
+| `precision` | `fp32` | `bf16` runs the forward pass in bfloat16; CUDA only |
+| `grad_accum` | `1` | Batches whose gradients are added up per optimizer step, for a larger effective batch |
+| `compile` | `false` | `torch.compile` the model; worthwhile on CUDA for long runs |
 
 Each training step draws `batch_size` random subjects and a random window of at most `max_len`
 events from each. The run keeps the checkpoint with the lowest tuning loss.
+
+`last.pt` holds the optimizer and random-number state as well, and is rewritten at every check:
+`modlehr train --resume` continues from it exactly, and `--stop-after STEP` stops a run on purpose.
 
 `out_dir` receives `config.yaml` (the full resolved config), `log.jsonl` (one line per check:
 step, train and tuning loss, the loss parts, seconds), `best.pt`, `last.pt`, and later
@@ -156,3 +162,5 @@ step, train and tuning loss, the loss parts, seconds), `best.pt`, `last.pt`, and
 | `likelihood` | `true` | Also report the negative log-likelihood per prediction on the split |
 
 `modlehr baseline` uses the same `evaluate` section, so its pairs line up with the model's.
+`--models` picks `logistic`, `gbm` or both; `--gbm-features` (default 2,000) caps the columns
+gradient boosting sees, keeping those non-empty for the most training subjects.
