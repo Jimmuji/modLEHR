@@ -30,7 +30,7 @@ class EventRule:
       target       an outcome the model predicts (diseases, death); tokenized as its target
                    group, and only the first occurrence per patient is kept by default
       static       a fact without a time (sex); placed at age 0
-      measurement  a numeric value (labs, vitals); value kept, thinned to one per window
+      measurement  a numeric value (labs, vitals); value kept, optionally thinned to one per window
       categorical  a text answer (smoking status); the token is code//answer
       context      any other event used as input only (medications, procedures)
     """
@@ -41,7 +41,7 @@ class EventRule:
     codes: list[str] | None = None
     description_regex: str | None = None
     exclude_regex: str | None = None  # codes matching this are left out of the rule
-    thin_years: float | None = None
+    thin_years: float | None = None  # keep the first event of each code per window of this many years
     first_occurrence: bool | None = None
 
 

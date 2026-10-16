@@ -22,6 +22,21 @@ def test_repo_configs_load():
     cfg = load_config(REPO / "configs/experiment/synthea_gpt_values.yaml")
     assert cfg.data.value_mode == "continuous" and cfg.model.value_encoding == "mlp"
     assert cfg.model.attention == "mha" and len(cfg.data.events) == 5
+    for path in sorted((REPO / "configs/experiment").glob("*.yaml")):  # every experiment config resolves
+        load_config(path)
+    mimic = load_config(REPO / "configs/experiment/mimic_iv_gpt.yaml")
+    assert mimic.data.target_grouping == "icd_3char" and mimic.model.max_len == 512
+
+
+def test_thinning_applies_to_context_events(tiny_config):
+    cfg = replace(tiny_config.data, prepared_dir=tiny_config.data.prepared_dir + "_ctx",
+                  events=[*tiny_config.data.events[:3],
+                          type(tiny_config.data.events[0])(name="hba1c_ctx", role="context", codes=["LOINC//4548-4"],
+                                                           thin_years=10)])
+    meta = run_prepare(cfg, log=lambda *_: None)
+    rule = [r for r in meta["rules"] if r["rule"] == "hba1c_ctx"][0]
+    # HbA1c is recorded every 3 years from age 20 to 79: at most 6 ten-year windows per subject
+    assert 0 < rule["events"] <= 6 * 160
 
 
 def test_tiny_meds_is_valid(tiny_meds):

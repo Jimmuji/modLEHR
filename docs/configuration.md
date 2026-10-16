@@ -68,7 +68,7 @@ that matches it, and every condition listed in a rule must hold.
 | `codes` | none | Code is one of these |
 | `description_regex` | none | The code's description in `metadata/codes.parquet` matches this regular expression |
 | `exclude_regex` | none | Codes matching this regular expression are left out of the rule |
-| `thin_years` | none | Measurements only: keep the first value of each code in every window of this many years |
+| `thin_years` | none | Keep each subject's first event of each code in every window of this many years. For measurements, context events (medications, procedures) and categorical answers; frequent events such as ICU vital signs or repeated drug administrations otherwise dominate the sequence |
 | `first_occurrence` | true for targets, false otherwise | Keep only each subject's first event of each token |
 
 | Role | What it is | How it is tokenized |

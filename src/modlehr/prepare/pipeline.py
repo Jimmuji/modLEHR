@@ -61,10 +61,11 @@ def tokenize(events: pd.DataFrame, cfg: DataConfig) -> pd.DataFrame:
     out = out.sort_values(["subject_id", "age"], kind="stable")
 
     for i, rule in enumerate(rules):
-        if rule.role == "measurement" and rule.thin_years:
+        if rule.thin_years and rule.role in ("measurement", "context", "categorical"):
             rows = out["rule"] == i
             bucket = np.floor(out.loc[rows, "age"] / rule.thin_years)
-            dup = out.loc[rows].assign(bucket=bucket).duplicated(["subject_id", "code", "bucket"])
+            key = "code" if rule.role == "measurement" else "token"
+            dup = out.loc[rows].assign(bucket=bucket).duplicated(["subject_id", key, "bucket"])
             out = out.drop(index=dup[dup].index)
         first = rule.first_occurrence if rule.first_occurrence is not None else rule.role == "target"
         if first:

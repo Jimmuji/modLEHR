@@ -1,0 +1,21 @@
+# Plain GPT on full MIMIC-IV. A starting point: sizes and steps are meant to be tuned.
+# On a CUDA GPU add --set train.precision=bf16 (and --set train.compile=true for long runs).
+defaults: [../data/mimic_iv.yaml, ../model/gpt_baseline.yaml]
+model:
+  d_model: 256
+  n_layers: 6
+  n_heads: 8
+  max_len: 512
+train:
+  out_dir: runs/mimic_iv_gpt
+  batch_size: 64
+  steps: 20000
+  warmup: 1000
+  eval_every: 1000
+evaluate:
+  # MIMIC-IV is adults seen in hospital, and a record ends at the last hospital contact
+  # (death is linked up to one year after discharge), so landmarks start at 40 and the
+  # horizon is shorter than on Synthea.
+  landmarks: [40, 50, 60, 70, 80]
+  horizon_years: 2
+  min_cases: 25

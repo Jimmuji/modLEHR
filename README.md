@@ -61,7 +61,7 @@ With [uv](https://docs.astral.sh/uv/):
 git clone https://github.com/Jimmuji/modLEHR.git && cd modLEHR
 uv venv --python 3.13 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
-.venv/bin/python -m pytest          # 33 tests, about 7 seconds
+.venv/bin/python -m pytest          # 34 tests, about 7 seconds
 ```
 
 With plain pip: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
@@ -414,19 +414,33 @@ How to read it:
 
 ## Other data sources
 
-**MIMIC-IV.** The official ETL writes MEDS, and `configs/data/mimic_iv_demo.yaml` reads it. The demo
-(100 patients, open access) checks the pipeline end to end; it is too small to score:
+**MIMIC-IV.** The official ETL ([MIMIC_IV_MEDS](https://github.com/Medical-Event-Data-Standard/MIMIC_IV_MEDS))
+writes MEDS, and `configs/data/mimic_iv.yaml` reads it: diagnoses (ICD-9 and ICD-10, grouped to
+three-character categories) and death as targets; hospital lab results and ICU charted items as
+measurements; medications, procedures, admissions, ICU stays and emergency visits as context.
+`scripts/run_mimic_iv.sh` runs everything, from the raw files to the comparison with the classical
+baselines:
+
+```bash
+RAW=~/mimic_dl/physionet.org/files/mimiciv/3.1 scripts/run_mimic_iv.sh
+```
+
+It checks that the raw download is complete first, and prints the command to resume it if not. The
+ETL takes about 32 minutes and 20 GB of memory. MIMIC-IV is credentialed data: run it in your own
+terminal and share summary numbers only, never rows. `configs/experiment/mimic_iv_gpt.yaml` is a
+starting point (256 wide, 6 layers, 512-event windows, 20,000 steps; landmarks 40 to 80 with a
+2-year horizon, since a MIMIC record ends at the last hospital contact); on a CUDA GPU add
+`--set train.precision=bf16`.
+
+The open demo (100 patients) checks the same rules end to end; in it, 1,474 diagnosis codes
+(734 ICD-10, 740 ICD-9) become 704 three-character categories, of which 142 plus death are
+frequent enough to be targets. It is too small to score:
 
 ```bash
 uv venv --python 3.11 .venv-etl && uv pip install --python .venv-etl/bin/python MIMIC_IV_MEDS
 PATH="$PWD/.venv-etl/bin:$PATH" meds-extract-run spec=MIMIC-IV output_dir=$PWD/data/mimic_iv_demo_meds dataset_key=demo
 modlehr run --config configs/experiment/mimic_iv_demo_gpt.yaml
 ```
-
-The ETL runs in its own environment (Python 3.11), with that environment's `bin` directory on `PATH`. In
-the demo, 1,474 diagnosis codes (734 ICD-10, 740 ICD-9) become 704 three-character categories,
-and 142 of them plus death are frequent enough to be targets. The full dataset needs PhysioNet
-credentials; point `meds_dir` at its MEDS output.
 
 **Anything else.** If a MEDS converter exists, run it and write a data config. Otherwise write an
 adapter; [docs/extending.md](docs/extending.md) lists what the output must contain.
@@ -455,7 +469,7 @@ src/modlehr/
   registry.py      name → part, for everything that can be swapped
   config.py        experiment configuration and command-line overrides
   cli.py           the commands
-scripts/           compare_synthea.sh: every Synthea variant over three seeds
+scripts/           compare_synthea.sh: every Synthea variant over three seeds; run_mimic_iv.sh: full MIMIC-IV
 tests/             unit tests and end-to-end tests on a tiny synthetic MEDS dataset
 docs/              design notes, configuration reference, extension guide, disease codes
 ```
@@ -486,7 +500,6 @@ it with the MEDS tools rather than narrowing the event rules.
 
 - Disease codes: ICD-9 to ICD-10 through the CMS General Equivalence Mappings, and a phecode grouping
 - More architectures from recent language models, compared over several seeds
-- Full MIMIC-IV once PhysioNet credentials are in place
 - Clinical notes as an input, through `text_value` and the input head's `extra` hook
 - Calibration of predicted risks, and sampled against observed incidence by age
 - Prediction tasks in the MEDS-DEV label format, for comparison with other MEDS models
