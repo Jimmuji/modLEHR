@@ -14,7 +14,7 @@ import pandas as pd
 from modlehr.config import EventRule
 from modlehr.data.meds_io import MedsDataset
 
-ROLES = ("static", "measurement", "categorical", "context", "target")
+ROLES = ("static", "measurement", "categorical", "context", "text", "target")  # also the order within one time
 SECONDS_PER_YEAR = 365.25 * 86400
 
 
@@ -23,6 +23,7 @@ def classify_codes(codes: pd.DataFrame, rules: list[EventRule]) -> pd.Series:
     for rule in rules:
         if rule.role not in ROLES:
             raise ValueError(f"rule '{rule.name}': unknown role '{rule.role}', expected one of {ROLES}")
+    codes = codes.drop_duplicates("code")  # some ETLs list a code more than once
     code = codes["code"].astype(str)
     desc = codes["description"].fillna("").astype(str)
     assigned = np.full(len(codes), -1)

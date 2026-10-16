@@ -67,7 +67,8 @@ def mean_loss(model: ModLEHR, batches: list[dict], device: torch.device) -> floa
 def build_model(cfg: Config, prepared_dir: Path) -> tuple[ModLEHR, Vocabulary, dict]:
     vocab = Vocabulary.load(prepared_dir / "vocab.json")
     meta = json.loads((prepared_dir / "prepare.json").read_text())
-    model = ModLEHR(cfg.model, n_tokens=len(vocab.tokens), n_targets=len(vocab.targets))
+    model = ModLEHR(cfg.model, n_tokens=len(vocab.tokens), n_targets=len(vocab.targets),
+                    n_text_buckets=meta.get("text_buckets", 0))
     return model, vocab, meta
 
 

@@ -4,6 +4,11 @@
 #
 #   RAW=~/mimic_dl/physionet.org/files/mimiciv/3.1 scripts/run_mimic_iv.sh
 #
+# With clinical notes, also set NOTES to the MIMIC-IV-Note folder that holds discharge.csv.gz and
+# radiology.csv.gz (a separate PhysioNet module); the notes are merged into the MEDS data and the
+# notes experiment runs next to the plain one:
+#   RAW=... NOTES=~/mimic_dl/physionet.org/files/mimic-iv-note/2.2/note scripts/run_mimic_iv.sh
+#
 # RAW is the MIMIC-IV 3.1 directory that holds hosp/ and icu/. Credentialed data: run this in
 # your own terminal, and do not paste its data or row-level output into online tools (the
 # PhysioNet data use agreement). Summary numbers such as mean AUC are fine to share.
@@ -44,4 +49,13 @@ $M validate --meds-dir "$OUT"
 $M run --config configs/experiment/mimic_iv_gpt.yaml --seed 1 "$@"
 $M info --config configs/experiment/mimic_iv_gpt.yaml
 $M baseline --config configs/experiment/mimic_iv_gpt.yaml
-$M compare runs/mimic_iv_gpt_s1 runs/mimic_iv_gpt_logistic runs/mimic_iv_gpt_gbm
+runs=(runs/mimic_iv_gpt_s1 runs/mimic_iv_gpt_logistic runs/mimic_iv_gpt_gbm)
+
+if [ -n "${NOTES:-}" ]; then
+  if [ ! -f data/mimic_iv_meds_notes/metadata/codes.parquet ]; then
+    $M convert mimic-iv-note --raw-dir "$NOTES" --meds-dir "$OUT" --out data/mimic_iv_meds_notes
+  fi
+  $M run --config configs/experiment/mimic_iv_gpt_notes.yaml --seed 1 "$@"
+  runs+=(runs/mimic_iv_gpt_notes_s1)
+fi
+$M compare "${runs[@]}"

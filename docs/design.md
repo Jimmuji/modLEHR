@@ -51,6 +51,14 @@ fed back. Tokens seen in fewer than `min_subjects_per_token` training subjects a
   clipped to ±5) and read by the value encoding, `h_i = E_code(c_i) + E_age(t_i) + m_i F(z_i)`.
 - `none`: the measurement is an event without a value.
 
+## Text
+
+A rule with role `text` keeps the code as a token and the words of `text_value`: lowercased, split
+into runs of letters and digits, hashed with CRC-32 into `text_buckets` ids (the same on every
+machine), the first `text_max_words` of each note. They are stored ragged per split (`text_ref`,
+`note_offsets`, `note_words`), and the `hashed_bag` text encoding averages a learned embedding of
+each word and adds it to that note's event. Datasets without text rules write no text arrays.
+
 ## Labels and the loss
 
 Each event is labeled with the next target event strictly later in time (its target id and the
@@ -112,6 +120,7 @@ because targets are first occurrences.
   feed-forward layers
 - adapters beyond Synthea (MIMIC-IV, eICU and EHRSHOT have existing MEDS ETLs)
 - ICD-9 to ICD-10 through the CMS GEMs, and a phecode grouping
-- clinical notes through `text_value`, then images
+- images, through the input head's `extra` hook
+- a pretrained clinical language model as a text encoding
 
 - MEDS-DEV tasks and label files (`subject_id, prediction_time, boolean_value`)

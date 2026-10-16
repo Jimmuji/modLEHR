@@ -20,7 +20,14 @@ FINDING = {"SNOMEDCT//2001": "Something noted (finding)"}
 HBA1C = "LOINC//4548-4"
 
 
-def make_meds(root: Path, n: int = 160, seed: int = 0) -> Path:
+NOTE = "NOTE//DISCHARGE"
+
+
+def note_text(has_a: bool) -> str:
+    return "Patient reports polyuria and fatigue." if has_a else "Routine visit, no complaints."
+
+
+def make_meds(root: Path, n: int = 160, seed: int = 0, notes: bool = False) -> Path:
     rng = np.random.default_rng(seed)
     rows = []
     for s in range(n):
@@ -31,9 +38,13 @@ def make_meds(root: Path, n: int = 160, seed: int = 0) -> Path:
         for year in range(20, 80, 3):
             when = birth + dt.timedelta(days=365 * year + int(rng.integers(0, 300)))
             rows.append((s, when, HBA1C, float(level + 0.03 * year + rng.normal(0, 0.2)), None))
+        has_a = False
         for code in DISORDERS:
             if rng.random() < 0.5:
                 rows.append((s, birth + dt.timedelta(days=int(rng.integers(30, 75) * 365)), code, None, None))
+                has_a = has_a or code == "SNOMEDCT//1001"
+        if notes:
+            rows.append((s, birth + dt.timedelta(days=45 * 365), NOTE, None, note_text(has_a)))
         rows.append((s, birth + dt.timedelta(days=40 * 365), next(iter(FINDING)), None, None))
         if rng.random() < 0.3:
             rows.append((s, birth + dt.timedelta(days=int(rng.integers(70, 85) * 365)), meds.death_code, None, None))
@@ -47,8 +58,8 @@ def make_meds(root: Path, n: int = 160, seed: int = 0) -> Path:
         path.parent.mkdir(parents=True, exist_ok=True)
         table = pa.Table.from_pandas(group.drop(columns="split").reset_index(drop=True), preserve_index=False)
         pq.write_table(table.cast(meds.DataSchema.schema()), path)
-    codes = pd.DataFrame({"code": list(DISORDERS) + list(FINDING) + [HBA1C, meds.birth_code, meds.death_code, "GENDER//F", "GENDER//M"],
-                          "description": list(DISORDERS.values()) + list(FINDING.values()) + ["HbA1c", "Birth", "Death", "F", "M"]})
+    codes = pd.DataFrame({"code": list(DISORDERS) + list(FINDING) + [HBA1C, meds.birth_code, meds.death_code, "GENDER//F", "GENDER//M", NOTE],
+                          "description": list(DISORDERS.values()) + list(FINDING.values()) + ["HbA1c", "Birth", "Death", "F", "M", "Discharge note"]})
     codes["parent_codes"] = None
     (root / "metadata").mkdir(parents=True, exist_ok=True)
     pq.write_table(pa.Table.from_pandas(codes, preserve_index=False).cast(meds.CodeMetadataSchema.schema()), root / meds.code_metadata_filepath)

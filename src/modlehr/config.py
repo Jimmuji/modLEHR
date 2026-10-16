@@ -33,6 +33,8 @@ class EventRule:
       measurement  a numeric value (labs, vitals); value kept, optionally thinned to one per window
       categorical  a text answer (smoking status); the token is code//answer
       context      any other event used as input only (medications, procedures)
+      text         an event with text (clinical notes): the code is a token, and the words of its
+                   text_value are kept for the model's text encoding
     """
 
     name: str
@@ -54,6 +56,8 @@ class DataConfig:
     min_subjects_per_token: int = 25
     value_mode: str = "continuous"  # continuous | binned | none
     n_bins: int = 3
+    text_buckets: int = 65536  # text: words are hashed into this many buckets
+    text_max_words: int = 256  # text: words kept per note, from the start
 
 
 @dataclass
@@ -65,6 +69,7 @@ class ModelConfig:
     max_len: int = 256
     time_encoding: str = "sinusoidal_age"
     value_encoding: str = "none"
+    text_encoding: str = "none"  # none | hashed_bag (reads the words of text events)
     attention: str = "mha"
     attention_options: dict = field(default_factory=dict)  # passed to the attention, e.g. {n_kv_heads: 2}
     norm: str = "layernorm"

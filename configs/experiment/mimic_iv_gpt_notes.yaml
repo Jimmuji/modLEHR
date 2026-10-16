@@ -1,0 +1,6 @@
+# Plain GPT on MIMIC-IV with notes: the same model, plus a text encoding that reads each note's words.
+defaults: [mimic_iv_gpt.yaml, ../data/mimic_iv_notes.yaml]
+model:
+  text_encoding: hashed_bag
+train:
+  out_dir: runs/mimic_iv_gpt_notes

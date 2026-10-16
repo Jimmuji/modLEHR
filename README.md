@@ -40,6 +40,7 @@ raw records ──convert──> MEDS ──prepare──> timelines ──train
 | Command | What it does |
 |---|---|
 | `modlehr convert synthea` | Synthea CSV export → MEDS. Other sources use their existing MEDS converters |
+| `modlehr convert mimic-iv-note` | Merge MIMIC-IV-Note (discharge summaries, radiology reports) into MIMIC-IV MEDS as text events |
 | `modlehr validate` | Check a MEDS dataset against the official schemas |
 | `modlehr prepare` | Select events, compute ages, group disease codes, build vocabularies, scale or bin values, attach labels |
 | `modlehr info` | Summarize a prepared dataset: subjects, events, tokens and targets per rule |
@@ -62,7 +63,7 @@ With [uv](https://docs.astral.sh/uv/):
 git clone https://github.com/Jimmuji/modLEHR.git && cd modLEHR
 uv venv --python 3.13 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
-.venv/bin/python -m pytest          # 37 tests, about 8 seconds
+.venv/bin/python -m pytest          # 41 tests, about 10 seconds
 ```
 
 With plain pip: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
@@ -195,8 +196,9 @@ event. It does five things, all set in the data config (full reference in
 [docs/configuration.md](docs/configuration.md)):
 
 1. **Select events by rules.** Each rule picks codes (by prefix, list or description) and gives
-   them a role: `target` (an outcome the model predicts), `static`, `measurement`, `categorical` or
-   `context`. Codes no rule picks are left out.
+   them a role: `target` (an outcome the model predicts), `static`, `measurement`, `categorical`,
+   `context` or `text` (a note, whose words are kept for the text encoding). Codes no rule picks
+   are left out.
 2. **Compute ages.** Each event's age is its time minus the subject's `MEDS_BIRTH`, in years.
    Static facts sit at age 0.
 3. **Group disease codes into targets.** Inputs keep the source's detail; targets go through a
@@ -373,11 +375,11 @@ Some events of the same patient as above, as stored:
 tokens, ages, values → input head → N transformer blocks → final norm → output head
 ```
 
-**Input head.** Each event's vector is `E_code(c) + E_age(t) + m · F(z)`: a learned embedding of
-its token, an encoding of the patient's age at the event (in place of a position), and, when the
-event has a value and the value encoding is on, a small network applied to the scaled value.
-An optional `extra` tensor is added here; it is where other modalities (clinical notes, images)
-will plug in.
+**Input head.** Each event's vector is `E_code(c) + E_age(t) + m · F(z) + T(words)`: a learned
+embedding of its token, an encoding of the patient's age at the event (in place of a position),
+when the event has a value and the value encoding is on, a small network applied to the scaled
+value, and when the event is a note and the text encoding is on, an encoding of its words. An
+optional `extra` tensor is added here too; it is where images will plug in.
 
 **Blocks.** Pre-norm transformer blocks with causal attention: an event attends to itself and
 to earlier events, never to later ones, and never to padding.
@@ -399,6 +401,7 @@ Every part is registered by name and picked in `configs/model/`:
 | `ffn` | `gelu_mlp`, `swiglu`, `moe` | GELU MLP (GPT-2); gated SwiGLU (Llama); mixture of experts, each event routed to 2 of 4 SwiGLU experts with a load-balancing loss (Mixtral, DeepSeek, Qwen3-MoE). With the defaults an event passes through as many weights as the GELU MLP; the experts add capacity, not compute |
 | `time_encoding` | `sinusoidal_age`, `none` | |
 | `value_encoding` | `none`, `mlp` | `mlp` reads values kept with `value_mode: continuous` |
+| `text_encoding` | `none`, `hashed_bag` | `hashed_bag` averages learned embeddings of a note's words, hashed into 65,536 buckets with no external tokenizer |
 | `head` | `competing_risk` | |
 | `target_grouping` | `identity`, `icd10_3char`, `icd_3char` | `icd_3char` handles ICD-9 and ICD-10 mixed, as in MIMIC-IV |
 
@@ -460,6 +463,21 @@ terminal and share summary numbers only, never rows. `configs/experiment/mimic_i
 starting point (256 wide, 6 layers, 512-event windows, 20,000 steps; landmarks 40 to 80 with a
 2-year horizon, since a MIMIC record ends at the last hospital contact); on a CUDA GPU add
 `--set train.precision=bf16`.
+
+**Clinical notes.** MIMIC-IV-Note is a separate PhysioNet module and the ETL above does not read
+it. `modlehr convert mimic-iv-note` merges its discharge summaries and radiology reports into the
+MIMIC-IV MEDS data as `NOTE//DISCHARGE` and `NOTE//RADIOLOGY` events with the text in `text_value`,
+each into the shard that already holds the patient. `configs/experiment/mimic_iv_gpt_notes.yaml` adds a
+`text` rule for them and turns on the `hashed_bag` text encoding; `scripts/run_mimic_iv.sh` does both
+when `NOTES` points at the note folder:
+
+```bash
+RAW=~/mimic_dl/physionet.org/files/mimiciv/3.1 NOTES=~/mimic_dl/physionet.org/files/mimic-iv-note/2.2/note \
+  scripts/run_mimic_iv.sh
+```
+
+Each note keeps its first 256 words (`data.text_max_words`); a note can only be read by its own event
+and later ones, like every other input.
 
 The open demo (100 patients) checks the same rules end to end; in it, 1,474 diagnosis codes
 (734 ICD-10, 740 ICD-9) become 704 three-character categories, of which 142 plus death are
@@ -529,7 +547,7 @@ it with the MEDS tools rather than narrowing the event rules.
 
 - Disease codes: ICD-9 to ICD-10 through the CMS General Equivalence Mappings, and a phecode grouping
 - Every architecture compared over several seeds, on MIMIC-IV
-- Clinical notes as an input, through `text_value` and the input head's `extra` hook
+- A pretrained clinical language model as a text encoding, next to `hashed_bag`
 - Prediction tasks in the MEDS-DEV label format, for comparison with other MEDS models
 
 Design notes: [docs/design.md](docs/design.md). Disease codes and prediction targets:

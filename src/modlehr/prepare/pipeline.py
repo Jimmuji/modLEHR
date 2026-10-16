@@ -33,6 +33,7 @@ from modlehr.data.meds_io import open_meds
 from modlehr.prepare import grouping  # noqa: F401  (registers the target groupings)
 from modlehr.prepare.select import ROLES, classify_codes, read_events
 from modlehr.prepare.dataset import SplitWriter
+from modlehr.prepare.text import build_text
 from modlehr.prepare.timeline import build_split
 from modlehr.prepare.values import apply_bins, fit_bins, fit_scaler, scale
 from modlehr.prepare.vocabulary import Vocabulary
@@ -57,6 +58,8 @@ def tokenize(events: pd.DataFrame, cfg: DataConfig) -> pd.DataFrame:
     out = pd.DataFrame({"subject_id": events["subject_id"], "code": code, "token": token, "role": role,
                         "rule": events["rule"], "age": events["age"],
                         "value": events["numeric_value"].astype("float64").where(role == "measurement")})
+    if (role == "text").any():
+        out["text"] = events["text_value"].where(role == "text")
     out.loc[out["role"] == "static", "age"] = 0.0
     out = out.sort_values(["subject_id", "age"], kind="stable")
 
@@ -143,7 +146,10 @@ def run_prepare(cfg: DataConfig, log=print) -> dict:
         meta["value_stats"] = stats
 
     # pass 3: every shard, written to its split
-    writers = {split: SplitWriter(out_dir / split) for split in SPLITS}
+    with_text = any(rule.role == "text" for rule in cfg.events)
+    writers = {split: SplitWriter(out_dir / split, with_text=with_text) for split in SPLITS}
+    if with_text:
+        meta["text_buckets"] = cfg.text_buckets
     order = {r: i for i, r in enumerate(ROLES)}
     exposure, target_counts = 0.0, np.zeros(len(targets), dtype=np.int64)
     rule_codes = [set() for _ in cfg.events]
@@ -167,6 +173,8 @@ def run_prepare(cfg: DataConfig, log=print) -> dict:
             if not len(part):
                 continue
             arrays = build_split(part, vocab)
+            if with_text:
+                arrays.update(build_text(part, cfg.text_buckets, cfg.text_max_words))
             writers[split].append(arrays)
             if split == meds.train_split:
                 ages, offs = arrays["ages"], arrays["offsets"]

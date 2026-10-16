@@ -1,0 +1,29 @@
+# Full MIMIC-IV with MIMIC-IV-Note merged in (modlehr convert mimic-iv-note; scripts/run_mimic_iv.sh with NOTES=).
+# The same events as mimic_iv.yaml, plus discharge summaries and radiology reports as text events.
+# Code families, from that ETL:
+#   DIAGNOSIS//ICD//9//4280, DIAGNOSIS//ICD//10//E119     diagnoses, timed at hospital discharge
+#   LAB//RESULT//50912//mg/dL                             hospital lab results (labevents), with units
+#   LAB//220045                                           ICU charted items (chartevents): vitals, scores
+#   MEDICATION//START//<drug>//<NDC>                      medication administrations
+#   PROCEDURE//...                                         procedures
+#   HOSPITAL_ADMISSION//<type>//<location>, ICU_ADMISSION//<unit>, ED_REGISTRATION
+data:
+  meds_dir: data/mimic_iv_meds_notes
+  prepared_dir: runs/prepared/mimic_iv_notes
+  text_max_words: 256           # the first 256 words of each note
+  target_grouping: icd_3char         # ICD-9 and ICD-10 diagnoses to three-character categories
+  min_subjects_per_token: 100        # a larger cohort can afford a stricter filter; caps the target set too
+  value_mode: binned                 # plain GPT baseline: each result becomes code//Q1..Q3
+  n_bins: 3
+  events:
+    - {name: sex, role: static, prefix: "GENDER//"}
+    - {name: death, role: target, codes: ["MEDS_DEATH"]}
+    - {name: diagnoses, role: target, prefix: "DIAGNOSIS//ICD//"}
+    - {name: hospital_labs, role: measurement, prefix: "LAB//RESULT//", thin_years: 0.25}
+    - {name: icu_charts, role: measurement, prefix: "LAB//", exclude_regex: "SPECIMEN_COLLECTED|^LAB//RESULT//", thin_years: 0.25}
+    - {name: medications, role: context, prefix: "MEDICATION//START//", thin_years: 0.25}
+    - {name: procedures, role: context, prefix: "PROCEDURE//", thin_years: 0.25}
+    - {name: admissions, role: context, prefix: "HOSPITAL_ADMISSION//"}
+    - {name: icu_stays, role: context, prefix: "ICU_ADMISSION//"}
+    - {name: emergency, role: context, codes: ["ED_REGISTRATION"]}
+    - {name: notes, role: text, prefix: "NOTE//"}

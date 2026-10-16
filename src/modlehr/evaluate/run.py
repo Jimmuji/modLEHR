@@ -44,7 +44,9 @@ from modlehr.train.loop import pick_device, to_device
 def load_model(checkpoint: str | Path, prepared_dir: Path, device: torch.device) -> tuple[ModLEHR, Vocabulary]:
     state = torch.load(checkpoint, map_location="cpu", weights_only=False)
     vocab = Vocabulary.load(prepared_dir / "vocab.json")
-    model = ModLEHR(ModelConfig(**state["model_config"]), n_tokens=len(vocab.tokens), n_targets=len(vocab.targets))
+    meta = json.loads((Path(prepared_dir) / "prepare.json").read_text())
+    model = ModLEHR(ModelConfig(**state["model_config"]), n_tokens=len(vocab.tokens), n_targets=len(vocab.targets),
+                    n_text_buckets=meta.get("text_buckets", 0))
     model.load_state_dict(state["model"])
     return model.to(device).eval(), vocab
 

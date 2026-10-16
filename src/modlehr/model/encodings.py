@@ -6,6 +6,10 @@ a linear layer, the way Delphi encodes age in place of token positions.
 Value: how a measured number enters the model. "none" ignores it (values can still enter as
 binned tokens, see data.value_mode); "mlp" maps the scaled value through a small network and
 adds it to the token embedding.
+
+Text: how the words of a text event (a clinical note) enter. "none" ignores them (the note still
+enters as its code); "hashed_bag" averages a learned embedding of each hashed word and adds it to
+that event's embedding. Called as enc(word_ids, starts) with every note's words in one flat tensor.
 """
 
 from __future__ import annotations
@@ -64,3 +68,26 @@ class MLPValue(nn.Module):
 
     def forward(self, values: torch.Tensor, has_value: torch.Tensor) -> torch.Tensor:
         return self.net(values.unsqueeze(-1)) * has_value.unsqueeze(-1).to(values.dtype)
+
+
+@register("text_encoding", "none")
+class NoText(nn.Module):
+    def __init__(self, d_model: int, n_buckets: int = 0):
+        super().__init__()
+
+    def forward(self, word_ids: torch.Tensor, starts: torch.Tensor) -> None:
+        return None
+
+
+@register("text_encoding", "hashed_bag")
+class HashedBag(nn.Module):
+    """Mean of learned word embeddings over a note's hashed words (an EmbeddingBag)."""
+
+    def __init__(self, d_model: int, n_buckets: int = 0):
+        super().__init__()
+        if n_buckets <= 0:
+            raise ValueError("text_encoding hashed_bag needs prepared data with text events (data rule role: text)")
+        self.bag = nn.EmbeddingBag(n_buckets, d_model, mode="mean")
+
+    def forward(self, word_ids: torch.Tensor, starts: torch.Tensor) -> torch.Tensor:
+        return self.bag(word_ids, starts)

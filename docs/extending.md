@@ -16,6 +16,7 @@ return:
 | `ffn` | `f(d_model, dropout)` | `ffn(x)` | `[B, T, d_model]` |
 | `time_encoding` | `f(d_model)` | `enc(ages)` | `[B, T, d_model]`, added to the token embedding |
 | `value_encoding` | `f(d_model)` | `enc(values, has_value)` | `[B, T, d_model]`, added to the token embedding |
+| `text_encoding` | `f(d_model, n_buckets)` | `enc(word_ids, starts)` | `[n_notes, d_model]`, added to each note's event, or `None` |
 | `head` | `f(d_model, n_targets)` | `head(h)`, plus `loss`, `risk`, `sample` (below) | log-rates `[B, T, n_targets]` for `competing_risk` |
 | `target_grouping` | (a plain function) | `group(code)` | the target name for a MEDS code |
 
@@ -166,6 +167,9 @@ Rules that matter downstream:
 - **Prefix codes with their vocabulary**, `VOCAB//code` (`SNOMEDCT//44054006`, `LOINC//4548-4`,
   `ICD10//E11.9`), so rules can select by prefix and groupings can tell vocabularies apart.
 - **Keep the source's codes.** Map to another vocabulary in a target grouping, not in the adapter.
+- **Put note text in `text_value`**, one event per note, so a `text` rule can pick it up.
+- **Add a source to an existing MEDS dataset by merging into its shards**, never as new shards:
+  each subject's events must stay in one shard. `modlehr/data/adapters/mimic_iv_note.py` does this.
 - **Write splits by subject**, never by event, so no subject's history leaks into evaluation.
 - Write through `meds.DataSchema.schema()` and the other `meds` schemas, and finish with
   `modlehr validate`.

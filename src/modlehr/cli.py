@@ -39,9 +39,12 @@ def build_parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="command", required=True)
 
     conv = sub.add_parser("convert", help="convert a data source to MEDS")
-    conv.add_argument("source", choices=["synthea"])
-    conv.add_argument("--raw-dir", required=True, help="Synthea CSV export, one directory or chunk directories")
+    conv.add_argument("source", choices=["synthea", "mimic-iv-note"])
+    conv.add_argument("--raw-dir", required=True,
+                      help="synthea: the CSV export; mimic-iv-note: the folder with discharge.csv.gz and radiology.csv.gz")
     conv.add_argument("--out", required=True, help="MEDS output directory")
+    conv.add_argument("--meds-dir", help="mimic-iv-note: the MIMIC-IV MEDS dataset to add the notes to")
+    conv.add_argument("--note-kinds", default="discharge,radiology", help="mimic-iv-note: which note files to add")
 
     val = sub.add_parser("validate", help="check a MEDS dataset against the meds schemas")
     val.add_argument("--meds-dir", required=True)
@@ -97,8 +100,14 @@ def main(argv: list[str] | None = None) -> None:
     sys.stdout.reconfigure(line_buffering=True)  # progress shows up when output goes to a file
 
     if args.command == "convert":
-        from modlehr.data.adapters.synthea import convert
-        print(convert(args.raw_dir, args.out))
+        if args.source == "synthea":
+            from modlehr.data.adapters.synthea import convert
+            print(convert(args.raw_dir, args.out))
+        else:
+            from modlehr.data.adapters.mimic_iv_note import convert
+            if not args.meds_dir:
+                raise SystemExit("mimic-iv-note needs --meds-dir, the MIMIC-IV MEDS dataset to add notes to")
+            print(convert(args.raw_dir, args.meds_dir, args.out, tuple(k.strip() for k in args.note_kinds.split(","))))
         return
     if args.command == "validate":
         from modlehr.data.meds_io import open_meds

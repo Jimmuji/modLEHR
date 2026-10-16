@@ -54,6 +54,8 @@ way; edit the data config.
 | `min_subjects_per_token` | `25` | A token is kept only if at least this many training subjects have it. Applies to inputs and targets alike, so it also caps the number of prediction targets |
 | `value_mode` | `continuous` | How measurement values enter: `continuous` (scaled number, read by the value encoding), `binned` (the value becomes a token `code//Q1..Qn`), `none` (the measurement is an event without a value) |
 | `n_bins` | `3` | Number of quantile bins when `value_mode: binned`. Cut points come from the training split |
+| `text_buckets` | `65536` | Text events: words are hashed (CRC-32) into this many ids |
+| `text_max_words` | `256` | Text events: words kept from the start of each note |
 
 ### Event rules (`data.events`)
 
@@ -63,7 +65,7 @@ that matches it, and every condition listed in a rule must hold.
 | Key | Default | Meaning |
 |---|---|---|
 | `name` | required | A label for the rule, shown in `prepare` and `info` |
-| `role` | required | `target`, `static`, `measurement`, `categorical` or `context` (table below) |
+| `role` | required | `target`, `static`, `measurement`, `categorical`, `context` or `text` (table below) |
 | `prefix` | none | Code starts with this string, e.g. `"SNOMEDCT//"` |
 | `codes` | none | Code is one of these |
 | `description_regex` | none | The code's description in `metadata/codes.parquet` matches this regular expression |
@@ -78,6 +80,7 @@ that matches it, and every condition listed in a rule must hold.
 | `measurement` | A numeric value (labs, vitals) | The code, with its value kept, binned or dropped by `value_mode` |
 | `categorical` | A text answer (smoking status) | `code//answer`, e.g. `LOINC//72166-2//Never smoked tobacco (finding)` |
 | `context` | Any other input (medications, procedures) | The code |
+| `text` | A note (discharge summary, radiology report) | The code, plus the note's words for the text encoding |
 
 Example, from `configs/data/synthea.yaml`:
 
@@ -104,6 +107,7 @@ the `description_regex` keeps only disorders as targets.
 | `max_len` | `256` | Events per training window, and the most recent events the model sees at evaluation |
 | `time_encoding` | `sinusoidal_age` | `sinusoidal_age`, `none` |
 | `value_encoding` | `none` | `none`, `mlp` (use with `data.value_mode: continuous`) |
+| `text_encoding` | `none` | `none`, `hashed_bag` (needs a `text` rule in the data config) |
 | `attention` | `mha` | `mha`, `gqa`, `rope`, `rope_age`, `alibi_age`, `mla`, `local_age` |
 | `attention_options` | `{}` | Passed to the attention; see below |
 | `norm` | `layernorm` | `layernorm`, `rmsnorm` |
