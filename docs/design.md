@@ -119,7 +119,6 @@ because targets are first occurrences.
 - other attention variants (multi-head latent attention, linear attention) and mixture-of-experts
   feed-forward layers
 - adapters beyond Synthea (MIMIC-IV, eICU and EHRSHOT have existing MEDS ETLs)
-- ICD-9 to ICD-10 through the CMS GEMs, and a phecode grouping
 - images, through the input head's `extra` hook
 - a pretrained clinical language model as a text encoding
 

@@ -63,7 +63,7 @@ With [uv](https://docs.astral.sh/uv/):
 git clone https://github.com/Jimmuji/modLEHR.git && cd modLEHR
 uv venv --python 3.13 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
-.venv/bin/python -m pytest          # 41 tests, about 10 seconds
+.venv/bin/python -m pytest          # 46 tests, about 10 seconds
 ```
 
 With plain pip: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
@@ -403,7 +403,7 @@ Every part is registered by name and picked in `configs/model/`:
 | `value_encoding` | `none`, `mlp` | `mlp` reads values kept with `value_mode: continuous` |
 | `text_encoding` | `none`, `hashed_bag` | `hashed_bag` averages learned embeddings of a note's words, hashed into 65,536 buckets with no external tokenizer |
 | `head` | `competing_risk` | |
-| `target_grouping` | `identity`, `icd10_3char`, `icd_3char` | `icd_3char` handles ICD-9 and ICD-10 mixed, as in MIMIC-IV |
+| `target_grouping` | `identity`, `icd10_3char`, `icd_3char`, `icd_gems`, `phecode` | `icd_3char` handles ICD-9 and ICD-10 mixed, as in MIMIC-IV, keeping ICD-9 categories apart; `icd_gems` maps ICD-9 through the CMS General Equivalence Mappings first, so both coding eras share one target set; `phecode` maps both to phecodes (PheWAS catalog). The last two read public mapping files named in `data.target_grouping_options` |
 
 Options go in the config, for example `attention_options: {n_kv_heads: 2}` or
 `ffn_options: {n_experts: 8}`. Each part has a ready model config in `configs/model/`. All keys and
@@ -545,7 +545,7 @@ it with the MEDS tools rather than narrowing the event rules.
 
 ## Roadmap
 
-- Disease codes: ICD-9 to ICD-10 through the CMS General Equivalence Mappings, and a phecode grouping
+- Results on MIMIC-IV with `icd_gems` and `phecode` targets, against `icd_3char`
 - Every architecture compared over several seeds, on MIMIC-IV
 - A pretrained clinical language model as a text encoding, next to `hashed_bag`
 - Prediction tasks in the MEDS-DEV label format, for comparison with other MEDS models

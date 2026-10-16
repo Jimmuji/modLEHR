@@ -50,7 +50,8 @@ way; edit the data config.
 | `meds_dir` | `data/meds` | The MEDS dataset to read |
 | `prepared_dir` | `runs/prepared` | Where `prepare` writes timelines. Give each data config its own directory; experiments that use the same data config share it |
 | `events` | `[]` | Event rules, see below. Codes no rule matches are left out |
-| `target_grouping` | `identity` | Registered function that maps a target code to the outcome the model predicts: `identity`, `icd10_3char`, `icd_3char` |
+| `target_grouping` | `identity` | Registered function that maps a target code to the outcome the model predicts: `identity`, `icd10_3char`, `icd_3char`, `icd_gems`, `phecode` |
+| `target_grouping_options` | `{}` | Passed to groupings that read files: `icd_gems` takes `gems_path` (CMS `2018_I9gem.txt`); `phecode` takes `icd9_map`, `icd10_map` (PheWAS catalog CSVs) and `unmapped` (`keep` or `drop`) |
 | `min_subjects_per_token` | `25` | A token is kept only if at least this many training subjects have it. Applies to inputs and targets alike, so it also caps the number of prediction targets |
 | `value_mode` | `continuous` | How measurement values enter: `continuous` (scaled number, read by the value encoding), `binned` (the value becomes a token `code//Q1..Qn`), `none` (the measurement is an event without a value) |
 | `n_bins` | `3` | Number of quantile bins when `value_mode: binned`. Cut points come from the training split |

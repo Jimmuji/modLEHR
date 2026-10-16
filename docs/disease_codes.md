@@ -29,23 +29,36 @@ level" is not defined the way it is for ICD-10. Official maps from SNOMED CT to 
 Synthea's disease set is small because its disease modules are, so the problem Jun raised does
 not show up there. It shows up on real data: even 100 MIMIC patients carry 1,474 distinct codes.
 
-## Plan
+## What the framework does
 
-1. **Inputs stay fine-grained, targets are grouped.** The framework already keeps two
-   vocabularies; the grouping is a registered function chosen in the data config.
-2. **ICD-coded sources (MIMIC-IV, eICU): ICD-10 three-character categories**, the same level as
-   Delphi (`icd10_3char`, `icd_3char`). ICD-9 codes are mapped to ICD-10 with the CMS General
-   Equivalence Mappings (public) before truncation, so both eras land in one set. Until that
-   map is added, `icd_3char` keeps ICD-9 categories as a separate family.
-3. **Option: phecodes**, one public map for ICD-9-CM and ICD-10-CM into about 1,900 clinically
-   meaningful groups. To compare against ICD-10 categories on MIMIC-IV.
+1. **Inputs stay fine-grained, targets are grouped.** Two vocabularies; the grouping is a registered
+   function chosen in the data config, and `modlehr prepare` prints, per rule, how many codes were
+   matched, how many targets they became and how many passed the frequency filter.
+2. **ICD-coded sources (MIMIC-IV, eICU): ICD-10 three-character categories**, the level Delphi uses.
+   `icd_3char` truncates ICD-9 and ICD-10 separately, so the two eras of MIMIC-IV form two target
+   families. `icd_gems` maps each ICD-9 code through the CMS General Equivalence Mappings (public)
+   before truncating, so both eras land in one set; an ICD-9 code with several ICD-10 targets takes
+   the category most of them share, and codes the GEMs cannot map stay ICD-9 categories.
+3. **Phecodes**: `phecode` maps ICD-9-CM and ICD-10-CM through the PheWAS catalog maps (public) into
+   about 1,900 clinically meaningful groups, looking up ever shorter prefixes for codes more specific
+   than the map; unmapped codes are kept as ICD categories or dropped. To compare against ICD-10
+   categories on MIMIC-IV.
 4. **SNOMED-coded sources: map to ICD-10** where a licensed map is available; otherwise group by
-   "is a" ancestors to a curated set. Synthea does not need either for now.
-5. **The frequency filter** (`min_subjects_per_token`) drops outcomes too rare to learn and
-   caps the target vocabulary on every source.
+   "is a" ancestors to a curated set. Synthea does not need either.
+5. **The frequency filter** (`min_subjects_per_token`) drops outcomes too rare to learn and caps the
+   target vocabulary on every source.
 
-## To do
+The mapping files are not in the repository. Configure them like this:
 
-- `icd_3char` with ICD-9 → ICD-10 through the CMS GEMs
-- a `phecode` grouping
-- report the number of raw codes, groups and kept targets in `prepare.json`
+```yaml
+target_grouping: icd_gems
+target_grouping_options: {gems_path: maps/2018_I9gem.txt}
+```
+
+```yaml
+target_grouping: phecode
+target_grouping_options:
+  icd9_map: maps/phecode_icd9_rolled.csv
+  icd10_map: maps/Phecode_map_v1_2_icd10cm_beta.csv
+  unmapped: keep
+```

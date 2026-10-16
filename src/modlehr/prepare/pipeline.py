@@ -27,10 +27,9 @@ import meds
 import numpy as np
 import pandas as pd
 
-from modlehr import registry
 from modlehr.config import DataConfig
 from modlehr.data.meds_io import open_meds
-from modlehr.prepare import grouping  # noqa: F401  (registers the target groupings)
+from modlehr.prepare.grouping import make_grouping
 from modlehr.prepare.select import ROLES, classify_codes, read_events
 from modlehr.prepare.dataset import SplitWriter
 from modlehr.prepare.text import build_text
@@ -48,7 +47,7 @@ def tokenize(events: pd.DataFrame, cfg: DataConfig) -> pd.DataFrame:
     token = code.copy()
 
     is_target = role == "target"
-    group = registry.get("target_grouping", cfg.target_grouping)
+    group = make_grouping(cfg.target_grouping, cfg.target_grouping_options)
     unique = code[is_target].unique()
     token[is_target] = code[is_target].map(dict(zip(unique, map(group, unique))))
 
@@ -60,6 +59,7 @@ def tokenize(events: pd.DataFrame, cfg: DataConfig) -> pd.DataFrame:
                         "value": events["numeric_value"].astype("float64").where(role == "measurement")})
     if (role == "text").any():
         out["text"] = events["text_value"].where(role == "text")
+    out = out.loc[out["token"].notna()]  # a grouping can leave a code out of the targets
     out.loc[out["role"] == "static", "age"] = 0.0
     out = out.sort_values(["subject_id", "age"], kind="stable")
 

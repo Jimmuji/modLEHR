@@ -53,6 +53,7 @@ class DataConfig:
     prepared_dir: str = "runs/prepared"
     events: list[EventRule] = field(default_factory=list)
     target_grouping: str = "identity"
+    target_grouping_options: dict = field(default_factory=dict)  # e.g. {gems_path: maps/2018_I9gem.txt}
     min_subjects_per_token: int = 25
     value_mode: str = "continuous"  # continuous | binned | none
     n_bins: int = 3
