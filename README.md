@@ -448,6 +448,21 @@ with its 95% interval.
 | Logistic regression, same inputs | 0.612 | +0.022 (+0.011 to +0.034) | |
 | Gradient boosting, same inputs | 0.606 | +0.016 (+0.005 to +0.027) | |
 
+The newer parts, one seed each so far (seed 1, against the plain GPT's seed 1, which scores 0.589
+and 4.781):
+
+| Run | Mean AUC | Difference | Held-out NLL |
+|---|---|---|---|
+| Query and key normalization (`qk_norm`) | 0.594 | +0.005 (−0.002 to +0.011) | 4.754 |
+| SwiGLU feed-forward (`swiglu`) | 0.592 | +0.003 (−0.003 to +0.010) | 4.748 |
+| RMSNorm (`rmsnorm`) | 0.591 | +0.002 (−0.003 to +0.007) | 4.773 |
+| Mixture of experts (`moe`, 2.03M parameters, same active width) | 0.588 | −0.001 (−0.012 to +0.009) | 4.737 |
+| Sliding window over 5 years (`local_age`) | 0.585 | −0.004 (−0.015 to +0.006) | 4.812 |
+| Multi-head latent attention (`mla`, 1.13M) | 0.583 | −0.006 (−0.016 to +0.004) | 4.801 |
+
+None differs from the plain GPT beyond its interval; `scripts/compare_synthea.sh` runs all of them over
+three seeds.
+
 How to read it:
 
 - **Only rotary attention over age moves AUC**, and only just: +0.004, with the interval touching
