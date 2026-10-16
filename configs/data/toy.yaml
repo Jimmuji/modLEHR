@@ -1,0 +1,13 @@
+# The toy dataset (modlehr convert toy --out data/toy_meds): synthetic, for trying every command.
+data:
+  meds_dir: data/toy_meds
+  prepared_dir: runs/prepared/toy
+  min_subjects_per_token: 10
+  value_mode: binned
+  n_bins: 3
+  events:
+    - {name: sex, role: static, prefix: "GENDER//"}
+    - {name: death, role: target, codes: ["MEDS_DEATH"]}
+    - {name: disorders, role: target, prefix: "SNOMEDCT//", description_regex: "\\(disorder\\)"}
+    - {name: hba1c, role: measurement, codes: ["LOINC//4548-4"], thin_years: 5}
+    - {name: notes, role: text, codes: ["NOTE//DISCHARGE"]}

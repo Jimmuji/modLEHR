@@ -1,5 +1,6 @@
 """Command line: one command per stage, plus helpers to run and compare experiments.
 
+    modlehr convert  toy --out data/toy_meds          (a synthetic dataset to try everything in a minute)
     modlehr convert  synthea --raw-dir RAW --out data/synthea_meds
     modlehr validate --meds-dir data/synthea_meds
     modlehr prepare  --config configs/experiment/synthea_gpt.yaml
@@ -39,12 +40,13 @@ def build_parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="command", required=True)
 
     conv = sub.add_parser("convert", help="convert a data source to MEDS")
-    conv.add_argument("source", choices=["synthea", "mimic-iv-note"])
-    conv.add_argument("--raw-dir", required=True,
+    conv.add_argument("source", choices=["synthea", "mimic-iv-note", "toy"])
+    conv.add_argument("--raw-dir",
                       help="synthea: the CSV export; mimic-iv-note: the folder with discharge.csv.gz and radiology.csv.gz")
     conv.add_argument("--out", required=True, help="MEDS output directory")
     conv.add_argument("--meds-dir", help="mimic-iv-note: the MIMIC-IV MEDS dataset to add the notes to")
     conv.add_argument("--note-kinds", default="discharge,radiology", help="mimic-iv-note: which note files to add")
+    conv.add_argument("--subjects", type=int, default=2000, help="toy: how many synthetic subjects")
 
     val = sub.add_parser("validate", help="check a MEDS dataset against the meds schemas")
     val.add_argument("--meds-dir", required=True)
@@ -100,6 +102,12 @@ def main(argv: list[str] | None = None) -> None:
     sys.stdout.reconfigure(line_buffering=True)  # progress shows up when output goes to a file
 
     if args.command == "convert":
+        if args.source == "toy":
+            from modlehr.data.toy import convert
+            print(convert(args.out, n=args.subjects))
+            return
+        if not args.raw_dir:
+            raise SystemExit(f"convert {args.source} needs --raw-dir")
         if args.source == "synthea":
             from modlehr.data.adapters.synthea import convert
             print(convert(args.raw_dir, args.out))

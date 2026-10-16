@@ -17,6 +17,7 @@ event, and an output head gives every outcome a rate per year.
 **Contents:**
 [What it does](#what-it-does) ·
 [Installation](#installation) ·
+[Try it in a minute](#try-it-in-a-minute) ·
 [Quick start on Synthea](#quick-start-on-synthea) ·
 [The pipeline, stage by stage](#the-pipeline-stage-by-stage) ·
 [Running and comparing experiments](#running-and-comparing-experiments) ·
@@ -39,6 +40,7 @@ raw records ──convert──> MEDS ──prepare──> timelines ──train
 
 | Command | What it does |
 |---|---|
+| `modlehr convert toy` | Write a small synthetic MEDS dataset, to try every command in a minute |
 | `modlehr convert synthea` | Synthea CSV export → MEDS. Other sources use their existing MEDS converters |
 | `modlehr convert mimic-iv-note` | Merge MIMIC-IV-Note (discharge summaries, radiology reports) into MIMIC-IV MEDS as text events |
 | `modlehr validate` | Check a MEDS dataset against the official schemas |
@@ -63,13 +65,32 @@ With [uv](https://docs.astral.sh/uv/):
 git clone https://github.com/Jimmuji/modLEHR.git && cd modLEHR
 uv venv --python 3.13 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
-.venv/bin/python -m pytest          # 46 tests, about 10 seconds
+.venv/bin/python -m pytest          # 47 tests, about 10 seconds
 ```
 
 With plain pip: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
 
 Run every command from the repository root; paths in the configs are relative to it. The
 examples below write `modlehr`, meaning `.venv/bin/modlehr` (or `.venv/bin/python -m modlehr`).
+
+## Try it in a minute
+
+No Java, no downloads: a synthetic toy dataset (2,000 subjects, three diseases, an HbA1c measurement,
+a discharge note each) runs every stage on a laptop CPU in about 16 seconds.
+
+```console
+$ modlehr convert toy --out data/toy_meds
+$ modlehr run --config configs/experiment/toy_gpt.yaml
+[prepare] vocabulary 11 tokens, 4 targets → runs/prepared/toy
+[train] best tuning loss 3.5744 → runs/toy_gpt/best.pt
+[evaluate] mean AUC 0.614 (95% CI 0.473 to 0.754) over 10 target and landmark pairs
+$ modlehr baseline --config configs/experiment/toy_gpt.yaml
+[baseline] logistic: mean AUC 0.492 (95% CI 0.463 to 0.522) over 10 pairs → runs/toy_gpt_logistic/evaluate.csv
+```
+
+The toy notes say "polyuria" for subjects who will develop disease A, so the transformer, which reads
+note words through its text encoding, beats a logistic regression that sees only codes. Nothing in
+the toy data is meant to be learned from; it exists to exercise the code.
 
 ## Quick start on Synthea
 

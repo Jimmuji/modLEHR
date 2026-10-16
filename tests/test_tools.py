@@ -128,3 +128,12 @@ def test_grad_accum_runs(tiny_config):
         tiny_config.train.precision = "bf16"
         with pytest.raises(ValueError):  # bf16 is for CUDA only
             train(tiny_config, log=QUIET)
+
+
+def test_convert_toy_from_the_command_line(tmp_path):
+    from modlehr.cli import main
+    from modlehr.data.meds_io import open_meds
+
+    main(["convert", "toy", "--out", str(tmp_path / "toy"), "--subjects", "50"])
+    ds = open_meds(tmp_path / "toy", validate=True)
+    assert len(ds.splits) == 50 and "NOTE//DISCHARGE" in set(ds.codes["code"])
