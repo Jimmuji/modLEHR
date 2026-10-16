@@ -16,6 +16,7 @@ from modlehr.evaluate.baselines import run_baselines
 from modlehr.evaluate.compare import compare, group_runs
 from modlehr.evaluate.run import evaluate
 from modlehr.evaluate.task import landmark_task
+from modlehr.generate.simulate import simulate
 from modlehr.prepare.dataset import open_split
 from modlehr.prepare.pipeline import describe, is_current, run_prepare
 from modlehr.prepare.vocabulary import Vocabulary
@@ -82,6 +83,12 @@ def test_evaluate_baselines_and_compare(tiny_config):
     summary = json.loads((run_dir / "evaluate.json").read_text())
     assert 0 < summary["mean_auc"] < 1 and summary["mean_auc_ci95"][0] <= summary["mean_auc"]
     assert summary["likelihood"]["predictions"] > 0 and np.isfinite(summary["likelihood"]["nll"])
+    assert summary["calibration"]["expected_over_observed"] > 0 and (run_dir / "evaluate_calibration.csv").exists()
+
+    table = simulate(tiny_config, run_dir / "best.pt", start_age=50.0, n_subjects=20, log=QUIET)
+    sim = json.loads((run_dir / "simulate.json").read_text())
+    assert sim["subjects"] > 0 and sim["observed_person_years"] > 0
+    assert (table["sampled_person_years"] <= table["observed_person_years"] + 1e-6).all()  # cut at the record's end
 
     written = run_baselines(tiny_config, models=("logistic", "gbm"), log=QUIET)
     for name, out in written.items():

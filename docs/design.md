@@ -113,5 +113,5 @@ because targets are first occurrences.
 - adapters beyond Synthea (MIMIC-IV, eICU and EHRSHOT have existing MEDS ETLs)
 - ICD-9 to ICD-10 through the CMS GEMs, and a phecode grouping
 - clinical notes through `text_value`, then images
-- calibration of predicted risks; sampled against observed incidence by age
+
 - MEDS-DEV tasks and label files (`subject_id, prediction_time, boolean_value`)

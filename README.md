@@ -47,6 +47,7 @@ raw records ──convert──> MEDS ──prepare──> timelines ──train
 | `modlehr evaluate` | AUC for each outcome at landmark ages, and the held-out negative log-likelihood |
 | `modlehr baseline` | Logistic regression and gradient boosting on exactly the same prediction task |
 | `modlehr generate` | Sample future outcomes for one patient |
+| `modlehr simulate` | Sample one future per held-out patient, cut at the end of the real record, and compare incidence by age with the records |
 | `modlehr run` | `prepare` (only if the data config changed), `train` and `evaluate` in one command |
 | `modlehr compare` | Mean AUC of several runs and the paired difference against the first, averaging over seeds |
 
@@ -253,13 +254,18 @@ AUC per (target, landmark) pair with at least `min_cases` cases and controls; th
 mean over pairs, with an approximate 95% interval. The defaults are landmarks 40, 50, 60 and 70
 and a 5-year horizon.
 
+**Calibration.** At each landmark, the head's probability that the next outcome is k and comes
+within the horizon is compared with what came next in the record; patients whose record ends
+sooner with no outcome are left out. Reported as expected over observed outcomes (1 is calibrated),
+and as predicted against observed by risk bin in `evaluate_calibration.csv`.
+
 **Likelihood.** The mean negative log-likelihood per prediction on the held-out patients,
 split into an event part (which target comes next) and a time part (how long until it). AUC
 only ranks patients within an age group, so it cannot tell whether the model gets timing right;
 the time part can. Lower is better.
 
-Output: `evaluate.csv` (one row per pair: target, landmark, cases, controls, AUC) and
-`evaluate.json` (summary) in the run directory.
+Output: `evaluate.csv` (one row per pair: target, landmark, cases, controls, AUC),
+`evaluate_calibration.csv` and `evaluate.json` (summary) in the run directory.
 
 ### baseline
 
@@ -280,6 +286,24 @@ larger model will not find more.
 Starts from a patient's history up to `--start-age`, draws the next outcome and the time until it
 from the head, appends it, and repeats until the horizon or death. Targets already in the
 history, or already drawn, are not drawn again, since targets are first occurrences.
+
+### simulate
+
+Samples one future from `--start-age` for up to 1,000 held-out patients whose record covers that
+age, and cuts each sampled future where that patient's real record ends. Without the cut, a
+sampled future runs on to death while a real record stops when follow-up stops, and the model
+looks several times too active. Both sides are counted as outcomes per 1,000 person-years in
+5-year age bands (`simulate.csv`), and per target (`simulate_targets.csv`).
+
+```console
+$ modlehr simulate --config configs/experiment/synthea_gpt.yaml --start-age 50
+[simulate] 1,000 of 1,867 held_out patients in the record at age 50
+[simulate] outcomes per 1,000 person-years: observed 349.8, sampled 235.5 (ratio 0.67)
+```
+
+This checks what AUC cannot: whether sampled futures look like real ones. Here the model samples
+281 deaths where the records hold 223, so sampled follow-up ends early, and it generates too few
+of every other outcome.
 
 ## Running and comparing experiments
 
@@ -408,6 +432,9 @@ How to read it:
 - **The classical models beat every transformer.** At 3,000 steps the transformers are
   undertrained, so architecture comparisons should wait until the baseline at least matches the
   logistic regression.
+- **Rates are off in ways AUC does not show.** The plain GPT predicts 17% more next outcomes than
+  occur (expected over observed 1.17), and simulated futures from age 50 hold 0.67 of the observed
+  outcomes per person-year, with too many deaths.
 - **Synthea limits what can be learned.** It generates diseases from a small number of rules, so
   the signal it holds is limited. It is the place to check that the pipeline runs, not where an
   architecture should be judged; model comparisons belong on real records (MIMIC-IV).
@@ -501,7 +528,6 @@ it with the MEDS tools rather than narrowing the event rules.
 - Disease codes: ICD-9 to ICD-10 through the CMS General Equivalence Mappings, and a phecode grouping
 - More architectures from recent language models, compared over several seeds
 - Clinical notes as an input, through `text_value` and the input head's `extra` hook
-- Calibration of predicted risks, and sampled against observed incidence by age
 - Prediction tasks in the MEDS-DEV label format, for comparison with other MEDS models
 
 Design notes: [docs/design.md](docs/design.md). Disease codes and prediction targets:

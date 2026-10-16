@@ -7,13 +7,19 @@ is the model's competing-risks probability of k within the horizon, read from it
 the last event at or before L. One AUC per (target, landmark) pair with enough cases and
 controls; the summary is the mean over pairs.
 
+Calibration. At each landmark the head's probability that the next target is k and comes within
+the horizon, counted from the last event at or before L, is compared with what happened next in
+the record. Subjects whose record ends sooner with no target are left out (censored). Reported
+as expected over observed events (1 is calibrated) for any target and for each target pooled,
+and as a table of predicted against observed by risk bin.
+
 Likelihood. The mean negative log-likelihood per prediction of the training objective, split
 into its event part (which target comes next) and its time part (how long until it). AUC is
 computed within age groups and only ranks patients, so it cannot see whether the model gets
 timing right; the time part can. Lower is better. Each timeline is cut into consecutive
 windows of max_len events, so every prediction is scored once.
 
-Writes <out>.csv (one row per pair) and <out>.json (summary).
+Writes <out>.csv (one row per pair), <out>_calibration.csv and <out>.json (summary).
 """
 
 from __future__ import annotations
@@ -79,6 +85,33 @@ def likelihood(model: ModLEHR, split: PreparedSplit, batch_size: int, device: to
     return {"predictions": count, **{k: v / max(count, 1) for k, v in sums.items()}}
 
 
+CALIBRATION_BINS = np.array([0.0, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0])
+
+
+def calibration(split: PreparedSplit, subjects: np.ndarray, landmark: float, horizon: float,
+                risk: np.ndarray) -> tuple[dict, pd.DataFrame]:
+    """Predicted against observed next target within the horizon of the last event at or before L."""
+    rows = [history_before(split, i, landmark) for i in subjects]
+    next_t = np.array([r["next_target"][-1] for r in rows])
+    dt = np.array([r["dt"][-1] for r in rows])
+    event = (next_t >= 0) & (dt <= horizon)
+    keep = event | (dt >= horizon)  # censored subjects have next_t -1 and dt shorter than the horizon
+    n_targets = risk.shape[1]
+    observed = np.zeros((len(rows), n_targets), dtype=bool)
+    observed[np.flatnonzero(event), next_t[event]] = True
+    r, o = risk[keep], observed[keep]
+    summary = {"landmark": landmark, "subjects": int(keep.sum()),
+               "expected_any": float(r.sum(axis=1).sum()), "observed_any": int(o.any(axis=1).sum())}
+    summary["expected_over_observed"] = summary["expected_any"] / max(summary["observed_any"], 1)
+    bins = np.digitize(r.ravel(), CALIBRATION_BINS[1:-1])
+    table = pd.DataFrame({"bin": bins, "predicted": r.ravel(), "observed": o.ravel()}).groupby("bin").agg(
+        pairs=("predicted", "size"), mean_predicted=("predicted", "mean"), observed_rate=("observed", "mean")).reset_index()
+    table.insert(0, "landmark", landmark)
+    table["bin_low"] = CALIBRATION_BINS[table["bin"]]
+    table["bin_high"] = CALIBRATION_BINS[table["bin"] + 1]
+    return summary, table.drop(columns="bin")
+
+
 def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = None, log=print) -> pd.DataFrame:
     prepared = Path(cfg.data.prepared_dir)
     device = pick_device(cfg.train.device)
@@ -87,10 +120,14 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
     first = first_target_ages(split.arrays["tokens"], split.arrays["ages"], split.offsets, vocab)
     H, min_cases = cfg.evaluate.horizon_years, cfg.evaluate.min_cases
 
-    rows = []
+    rows, calib, calib_tables = [], [], []
     for L in cfg.evaluate.landmarks:
         task = landmark_task(split, vocab, L, H, first)
         risk = landmark_risks(model, split, task.subjects, L, H, cfg.evaluate.batch_size, device)
+        if len(task.subjects):
+            c_summary, c_table = calibration(split, task.subjects, L, H, risk)
+            calib.append(c_summary)
+            calib_tables.append(c_table)
         for k, name in enumerate(vocab.targets):
             keep, case = task.labels(k)
             n_case, n_ctrl = int(case[keep].sum()), int((~case[keep]).sum())
@@ -102,12 +139,17 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
 
     summary = {**summarize(result), "horizon_years": H, "landmarks": cfg.evaluate.landmarks,
                "split": cfg.evaluate.split, "checkpoint": str(checkpoint)}
+    if calib:
+        expected, observed = sum(c["expected_any"] for c in calib), sum(c["observed_any"] for c in calib)
+        summary["calibration"] = {"expected_over_observed": expected / max(observed, 1), "by_landmark": calib}
     if cfg.evaluate.likelihood:
         summary["likelihood"] = likelihood(model, split, cfg.evaluate.batch_size, device)
 
     out_csv = Path(out_csv) if out_csv else Path(cfg.train.out_dir) / "evaluate.csv"
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     result.to_csv(out_csv, index=False)
+    if calib_tables:
+        pd.concat(calib_tables).to_csv(out_csv.with_name(out_csv.stem + "_calibration.csv"), index=False)
     out_csv.with_suffix(".json").write_text(json.dumps(summary, indent=1))
     if len(result):
         lo, hi = summary["mean_auc_ci95"]
@@ -115,6 +157,10 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
             f"{summary['pairs']} target and landmark pairs")
     else:
         log("[evaluate] no target had enough cases and controls; lower evaluate.min_cases or add landmarks")
+    if "calibration" in summary:
+        log(f"[evaluate] calibration: expected / observed next targets within {H:g} years = "
+            f"{summary['calibration']['expected_over_observed']:.2f} (1 is calibrated; "
+            + ", ".join(f"age {c['landmark']:g}: {c['expected_over_observed']:.2f}" for c in calib) + ")")
     if "likelihood" in summary:
         lk = summary["likelihood"]
         log(f"[evaluate] negative log-likelihood per prediction {lk['nll']:.3f} "

@@ -8,6 +8,7 @@
     modlehr evaluate --config configs/experiment/synthea_gpt.yaml
     modlehr baseline --config configs/experiment/synthea_gpt.yaml
     modlehr generate --config configs/experiment/synthea_gpt.yaml --subject 0 --start-age 50
+    modlehr simulate --config configs/experiment/synthea_gpt.yaml --start-age 50
     modlehr run      --config configs/experiment/synthea_gpt.yaml --seed 2
     modlehr compare  runs/synthea_gpt_s1 runs/synthea_gpt_rope_age_s1 runs/synthea_gpt_logistic
 
@@ -28,6 +29,7 @@ CONFIG_COMMANDS = {
     "evaluate": "AUC at landmark ages and held-out likelihood",
     "baseline": "logistic regression and gradient boosting on the same task",
     "generate": "sample futures for one patient",
+    "simulate": "sample one future per held-out patient and compare incidence with the records",
     "run": "prepare (if the data config changed), train and evaluate",
 }
 
@@ -53,8 +55,12 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--set", action="append", default=[], metavar="SECTION.KEY=VALUE",
                        help="override a config value, e.g. --set model.attention=gqa (repeatable)")
         p.add_argument("--seed", type=int, help="set train.seed and add _s<seed> to train.out_dir")
-        if name in ("evaluate", "generate"):
+        if name in ("evaluate", "generate", "simulate"):
             p.add_argument("--checkpoint", help="default: <train.out_dir>/best.pt")
+        if name == "simulate":
+            p.add_argument("--start-age", type=float, required=True)
+            p.add_argument("--subjects", type=int, default=1000, help="held-out patients to sample, at most")
+            p.add_argument("--out-dir", help="default: <train.out_dir>")
         if name == "evaluate":
             p.add_argument("--out", help="default: <train.out_dir>/evaluate.csv")
         if name == "baseline":
@@ -134,6 +140,9 @@ def main(argv: list[str] | None = None) -> None:
         best = train(cfg, resume=args.resume, stop_after=args.stop_after)
         if args.stop_after is None or args.stop_after >= cfg.train.steps - 1:
             evaluate(cfg, best)
+    elif args.command == "simulate":
+        from modlehr.generate.simulate import simulate
+        simulate(cfg, checkpoint, args.start_age, args.subjects, args.out_dir, seed=cfg.train.seed)
     elif args.command == "generate":
         from modlehr.evaluate.run import load_model
         from modlehr.generate.sample import sample_future
