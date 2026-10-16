@@ -8,6 +8,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
+import torch
 
 from modlehr.cli import build_parser, load
 from modlehr.config import apply_overrides, load_config
@@ -90,3 +91,33 @@ def test_evaluate_baselines_and_compare(tiny_config):
     table = compare([run_dir, *written.values()])
     assert list(table["run"]) == ["run", "run_logistic", "run_gbm"]
     assert np.isnan(table["diff"].iloc[0]) and table["shared_pairs"].iloc[1] > 0
+
+
+def test_resume_continues_exactly(tiny_config, tmp_path):
+    run_prepare(tiny_config.data, log=QUIET)
+    straight = copy.deepcopy(tiny_config)
+    straight.train.out_dir = str(tmp_path / "straight")
+    train(straight, log=QUIET)
+
+    split = copy.deepcopy(tiny_config)
+    split.train.out_dir = str(tmp_path / "split")
+    train(split, log=QUIET, stop_after=14)
+    train(split, log=QUIET, resume=True)
+
+    read = lambda d: [json.loads(x) for x in (Path(d) / "log.jsonl").read_text().splitlines()]  # noqa: E731
+    a, b = read(straight.train.out_dir), read(split.train.out_dir)
+    final_a = [r for r in a if r["step"] == 29][0]
+    final_b = [r for r in b if r["step"] == 29][0]
+    assert final_a["train_loss"] == pytest.approx(final_b["train_loss"], abs=1e-6)
+    assert final_a["tune_loss"] == pytest.approx(final_b["tune_loss"], abs=1e-6)
+
+
+def test_grad_accum_runs(tiny_config):
+    run_prepare(tiny_config.data, log=QUIET)
+    tiny_config.train.grad_accum = 2
+    tiny_config.train.steps = 5
+    assert train(tiny_config, log=QUIET).exists()
+    if not torch.cuda.is_available():
+        tiny_config.train.precision = "bf16"
+        with pytest.raises(ValueError):  # bf16 is for CUDA only
+            train(tiny_config, log=QUIET)

@@ -1,10 +1,17 @@
 """`modlehr train`: fit a model on a prepared dataset.
 
-Saves to train.out_dir: best.pt (lowest tuning loss), last.pt, config.yaml, log.jsonl.
+Saves to train.out_dir: config.yaml, log.jsonl, best.pt (lowest tuning loss) and last.pt. last.pt
+is rewritten at every tuning check with the optimizer and random-number state, so a run that is
+stopped (a job's time limit, a crash) continues exactly where it was with `--resume`.
+
+For large data on a GPU: train.precision: bf16 runs the forward pass in bfloat16 (CUDA), and
+train.grad_accum: k adds up gradients over k batches per optimizer step, for a larger effective
+batch than fits in memory.
 """
 
 from __future__ import annotations
 
+import contextlib
 import json
 import math
 import time
@@ -64,7 +71,22 @@ def build_model(cfg: Config, prepared_dir: Path) -> tuple[ModLEHR, Vocabulary, d
     return model, vocab, meta
 
 
-def train(cfg: Config, log=print) -> Path:
+def autocast(device: torch.device, precision: str):
+    if precision == "fp32":
+        return contextlib.nullcontext()
+    if precision == "bf16":
+        if device.type != "cuda":
+            raise ValueError("train.precision: bf16 needs a CUDA device; use fp32 on MPS and CPU")
+        return torch.autocast("cuda", dtype=torch.bfloat16)
+    raise ValueError(f"train.precision must be fp32 or bf16, not '{precision}'")
+
+
+def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None = None) -> Path:
+    """Train, and return the path of the best checkpoint.
+
+    resume continues from <out_dir>/last.pt. stop_after ends the run after that step (last.pt is
+    saved there), for runs split over several jobs.
+    """
     prepared = Path(cfg.data.prepared_dir)
     out_dir = Path(cfg.train.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -77,39 +99,67 @@ def train(cfg: Config, log=print) -> Path:
     if hasattr(model.head, "init_rates"):
         model.head.init_rates(meta["target_counts"], meta["exposure_years"])
     model.to(device)
+    if cfg.train.grad_accum < 1:
+        raise ValueError("train.grad_accum must be at least 1")
     log(f"[train] {model.n_parameters() / 1e6:.2f}M parameters, {len(vocab.tokens):,} tokens, "
-        f"{len(vocab.targets):,} targets, device {device}")
+        f"{len(vocab.targets):,} targets, device {device}, {cfg.train.precision}"
+        + (f", {cfg.train.grad_accum} batches per step" if cfg.train.grad_accum > 1 else ""))
 
     train_split = open_split(prepared, meds.train_split)
     tune_split = open_split(prepared, meds.tuning_split)
     tune_batches = fixed_windows(tune_split, cfg.train.batch_size, cfg.model.max_len, cfg.train.eval_batches)
     opt = make_optimizer(model, cfg.train)
+    if cfg.train.compile:
+        model.compile()  # in place; parameter names in checkpoints stay the same
 
-    best, t0 = float("inf"), time.time()
-    with open(out_dir / "log.jsonl", "w") as logf:
-        for step in range(cfg.train.steps):
+    best, first_step = float("inf"), 0
+    if resume:
+        if not (out_dir / "last.pt").exists():
+            raise FileNotFoundError(f"{out_dir / 'last.pt'} not found; nothing to resume")
+        state = torch.load(out_dir / "last.pt", map_location=device, weights_only=False)
+        model.load_state_dict(state["model"])
+        opt.load_state_dict(state["optimizer"])
+        rng.bit_generator.state = state["numpy_rng"]
+        torch.set_rng_state(state["torch_rng"].cpu())
+        if device.type == "cuda" and state.get("cuda_rng") is not None:
+            torch.cuda.set_rng_state(state["cuda_rng"].cpu())
+        best, first_step = state["best_tune_loss"], state["step"] + 1
+        log(f"[train] resuming after step {state['step']} (best tuning loss so far {best:.4f})")
+
+    t0 = time.time()
+    with open(out_dir / "log.jsonl", "a" if resume else "w") as logf:
+        for step in range(first_step, cfg.train.steps):
             for group in opt.param_groups:
                 group["lr"] = lr_at(step, cfg.train)
-            batch = to_device(random_windows(train_split, cfg.train.batch_size, cfg.model.max_len, rng), device)
-            loss, parts = model.loss(batch)
             opt.zero_grad(set_to_none=True)
-            loss.backward()
+            for _ in range(cfg.train.grad_accum):
+                batch = to_device(random_windows(train_split, cfg.train.batch_size, cfg.model.max_len, rng), device)
+                with autocast(device, cfg.train.precision):
+                    loss, parts = model.loss(batch)
+                (loss / cfg.train.grad_accum).backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), cfg.train.grad_clip)
             opt.step()
 
             last = step == cfg.train.steps - 1
-            if step % cfg.train.eval_every == 0 or last:
-                tune = mean_loss(model, tune_batches, device)
+            stopping = stop_after is not None and step >= stop_after
+            if step % cfg.train.eval_every == 0 or last or stopping:
+                with autocast(device, cfg.train.precision):
+                    tune = mean_loss(model, tune_batches, device)
                 record = {"step": step, "train_loss": float(loss.detach()), "tune_loss": tune, **parts,
                           "seconds": round(time.time() - t0, 1)}
                 logf.write(json.dumps(record) + "\n")
                 logf.flush()
                 log(f"[train] step {step:6d}  train {record['train_loss']:.4f}  tune {tune:.4f}  ({record['seconds']}s)")
-                state = {"model": model.state_dict(), "model_config": cfg.model.__dict__, "step": step, "tune_loss": tune}
+                weights = {"model": model.state_dict(), "model_config": cfg.model.__dict__, "step": step, "tune_loss": tune}
                 if tune < best:
                     best = tune
-                    torch.save(state, out_dir / "best.pt")
-                if last:
-                    torch.save(state, out_dir / "last.pt")
+                    torch.save(weights, out_dir / "best.pt")
+                torch.save({**weights, "optimizer": opt.state_dict(), "best_tune_loss": best,
+                            "numpy_rng": rng.bit_generator.state, "torch_rng": torch.get_rng_state(),
+                            "cuda_rng": torch.cuda.get_rng_state() if device.type == "cuda" else None},
+                           out_dir / "last.pt")
+            if stopping and not last:
+                log(f"[train] stopped after step {step}; continue with --resume")
+                return out_dir / "best.pt"
     log(f"[train] best tuning loss {best:.4f} → {out_dir / 'best.pt'}")
     return out_dir / "best.pt"

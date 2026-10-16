@@ -59,6 +59,10 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--out", help="default: <train.out_dir>/evaluate.csv")
         if name == "baseline":
             p.add_argument("--models", default="logistic,gbm", help="comma-separated: logistic, gbm")
+        if name in ("train", "run"):
+            p.add_argument("--resume", action="store_true", help="continue from <train.out_dir>/last.pt")
+            p.add_argument("--stop-after", type=int, metavar="STEP",
+                           help="stop after this step, e.g. to fit a job's time limit; continue later with --resume")
         if name == "run":
             p.add_argument("--force-prepare", action="store_true", help="prepare even if the prepared data is current")
         if name == "generate":
@@ -110,7 +114,7 @@ def main(argv: list[str] | None = None) -> None:
             print(line)
     elif args.command == "train":
         from modlehr.train.loop import train
-        train(cfg)
+        train(cfg, resume=args.resume, stop_after=args.stop_after)
     elif args.command == "evaluate":
         from modlehr.evaluate.run import evaluate
         evaluate(cfg, checkpoint, args.out)
@@ -125,7 +129,9 @@ def main(argv: list[str] | None = None) -> None:
             run_prepare(cfg.data)
         else:
             print(f"[run] {cfg.data.prepared_dir} matches the data config; skipping prepare")
-        evaluate(cfg, train(cfg))
+        best = train(cfg, resume=args.resume, stop_after=args.stop_after)
+        if args.stop_after is None or args.stop_after >= cfg.train.steps - 1:
+            evaluate(cfg, best)
     elif args.command == "generate":
         from modlehr.evaluate.run import load_model
         from modlehr.generate.sample import sample_future

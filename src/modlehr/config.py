@@ -86,6 +86,9 @@ class TrainConfig:
     eval_batches: int = 20
     seed: int = 1
     device: str = "auto"
+    precision: str = "fp32"  # fp32 | bf16 (CUDA): forward pass in bfloat16
+    grad_accum: int = 1  # batches whose gradients are added up per optimizer step
+    compile: bool = False  # torch.compile the model (CUDA; first steps are slower)
 
 
 @dataclass
