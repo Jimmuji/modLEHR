@@ -11,7 +11,7 @@ cd "$(dirname "$0")/.."
 export PYTHONPATH="$PWD/src${PYTHONPATH:+:$PYTHONPATH}"  # does not rely on the editable-install .pth
 M=".venv/bin/python -m modlehr"
 SEEDS="${SEEDS:-1 2 3}"
-EXPERIMENTS="synthea_gpt synthea_gpt_rope_age synthea_gpt_alibi_age synthea_gpt_gqa synthea_gpt_values"
+EXPERIMENTS="synthea_gpt synthea_gpt_rope_age synthea_gpt_alibi_age synthea_gpt_local_age synthea_gpt_gqa synthea_gpt_mla synthea_gpt_qknorm synthea_gpt_rmsnorm synthea_gpt_swiglu synthea_gpt_moe synthea_gpt_values"
 
 runs=()
 for exp in $EXPERIMENTS; do

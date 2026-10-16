@@ -1,0 +1,3 @@
+defaults: [synthea_gpt.yaml, ../model/gpt_mla.yaml]
+train:
+  out_dir: runs/synthea_gpt_mla

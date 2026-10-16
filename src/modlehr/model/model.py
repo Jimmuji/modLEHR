@@ -39,7 +39,7 @@ class Block(nn.Module):
         self.attn = registry.build("attention", cfg.attention, d_model=cfg.d_model, n_heads=cfg.n_heads, dropout=cfg.dropout,
                                    **cfg.attention_options)
         self.norm2 = registry.build("norm", cfg.norm, d_model=cfg.d_model)
-        self.ffn = registry.build("ffn", cfg.ffn, d_model=cfg.d_model, dropout=cfg.dropout)
+        self.ffn = registry.build("ffn", cfg.ffn, d_model=cfg.d_model, dropout=cfg.dropout, **cfg.ffn_options)
         self.drop = nn.Dropout(cfg.dropout)
 
     def forward(self, x: torch.Tensor, mask: torch.Tensor, ages: torch.Tensor) -> torch.Tensor:
@@ -83,7 +83,13 @@ class ModLEHR(nn.Module):
 
     def loss(self, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, dict]:
         out = self(batch)
-        return self.head.loss(out, batch["next_target"], batch["dt"], batch["loss_mask"])
+        nll, parts = self.head.loss(out, batch["next_target"], batch["dt"], batch["loss_mask"])
+        aux = [mod.aux_weight * mod.aux_loss for mod in self.modules() if hasattr(mod, "aux_loss")]
+        if aux and self.training:  # e.g. the load-balancing loss of a mixture of experts
+            extra = torch.stack(aux).sum()
+            parts["aux"] = float(extra.detach())
+            return nll + extra, parts
+        return nll, parts
 
     def n_parameters(self) -> int:
         return sum(p.numel() for p in self.parameters())

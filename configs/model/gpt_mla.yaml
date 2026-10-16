@@ -1,0 +1,5 @@
+# Plain GPT with multi-head latent attention (DeepSeek-V2, V3): keys and values from a 32-dim latent.
+defaults: [gpt_baseline.yaml]
+model:
+  attention: mla
+  attention_options: {kv_rank: 32}

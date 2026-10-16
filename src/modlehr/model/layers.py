@@ -23,11 +23,17 @@ class Attention(nn.Module):
     not on how many events lie between them. age_bias=True adds ALiBi's linear penalty, but on
     years rather than positions: head h subtracts slope_h * (years between query and key) from
     its scores, so each head looks back over a different time span.
+
+    qk_norm=True normalizes queries and keys (RMSNorm over each head) before their dot product, as
+    in OLMo 2, Gemma 3 and Qwen3. kv_rank=r computes keys and values from an r-dimensional latent,
+    as multi-head latent attention does in DeepSeek-V2 and V3. window_years=w lets an event attend
+    only to events in the w years before it, a sliding window over time rather than positions.
     """
 
     def __init__(self, d_model: int, n_heads: int, dropout: float = 0.0, n_kv_heads: int | None = None,
                  rope: str | None = None, rope_base: float = 10000.0, age_scale: float = 1.0,
-                 age_bias: bool = False, max_slope_exponent: float = 8.0):
+                 age_bias: bool = False, max_slope_exponent: float = 8.0, qk_norm: bool = False,
+                 kv_rank: int | None = None, window_years: float | None = None):
         super().__init__()
         if d_model % n_heads:
             raise ValueError("d_model must be divisible by n_heads")
@@ -41,7 +47,14 @@ class Attention(nn.Module):
             raise ValueError("rope needs an even head dimension")
         self.rope, self.age_scale = rope, age_scale
         self.q = nn.Linear(d_model, n_heads * self.head_dim)
-        self.kv = nn.Linear(d_model, 2 * self.n_kv * self.head_dim)
+        if kv_rank:
+            self.kv = nn.Sequential(nn.Linear(d_model, kv_rank, bias=False), nn.RMSNorm(kv_rank),
+                                    nn.Linear(kv_rank, 2 * self.n_kv * self.head_dim))
+        else:
+            self.kv = nn.Linear(d_model, 2 * self.n_kv * self.head_dim)
+        self.q_norm = nn.RMSNorm(self.head_dim) if qk_norm else None
+        self.k_norm = nn.RMSNorm(self.head_dim) if qk_norm else None
+        self.window_years = window_years
         self.out = nn.Linear(n_heads * self.head_dim, d_model)
         self.dropout = dropout
         inv_freq = rope_base ** (-torch.arange(0, self.head_dim, 2, dtype=torch.float32) / self.head_dim)
@@ -62,6 +75,14 @@ class Attention(nn.Module):
         b, t, _ = x.shape
         q = self.q(x).view(b, t, self.n_heads, self.head_dim).transpose(1, 2)
         k, v = self.kv(x).view(b, t, 2, self.n_kv, self.head_dim).permute(2, 0, 3, 1, 4)
+        if self.q_norm is not None:
+            q, k = self.q_norm(q), self.k_norm(k)
+        if self.window_years is not None:
+            if ages is None:
+                raise ValueError("window_years needs ages")
+            near = (ages.unsqueeze(-1) - ages.unsqueeze(-2)) <= self.window_years  # [B, T, T]
+            eye = torch.eye(t, dtype=torch.bool, device=x.device)
+            mask = mask & (near | eye).unsqueeze(1)  # an event always sees itself
         if self.rope:
             if self.rope == "age":
                 if ages is None:
@@ -113,6 +134,18 @@ def alibi_age(d_model: int, n_heads: int, dropout: float = 0.0, **options) -> At
     return Attention(d_model, n_heads, dropout, age_bias=True, **options)
 
 
+@register("attention", "mla")
+def mla(d_model: int, n_heads: int, dropout: float = 0.0, kv_rank: int | None = None, **options) -> Attention:
+    """Multi-head latent attention (DeepSeek-V2, V3): keys and values from a low-rank latent, default d_model / 4."""
+    return Attention(d_model, n_heads, dropout, kv_rank=kv_rank or max(8, d_model // 4), **options)
+
+
+@register("attention", "local_age")
+def local_age(d_model: int, n_heads: int, dropout: float = 0.0, window_years: float = 5.0, **options) -> Attention:
+    """Sliding-window attention over time (Mistral and Gemma slide over positions): only the last window_years."""
+    return Attention(d_model, n_heads, dropout, window_years=window_years, **options)
+
+
 @register("norm", "layernorm")
 def layernorm(d_model: int) -> nn.Module:
     return nn.LayerNorm(d_model)
@@ -145,3 +178,40 @@ class SwiGLU(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.drop(self.down(F.silu(self.gate(x)) * self.up(x)))
+
+
+@register("ffn", "moe")
+class MixtureOfExperts(nn.Module):
+    """Mixture of experts (Mixtral, DeepSeek, Qwen3-MoE): a router sends each event to its top_k of
+    n_experts SwiGLU networks and mixes their outputs by the router's weights.
+
+    Without pressure the router tends to use few experts, so it records a load-balancing loss
+    (Switch Transformer: n_experts * sum over experts of the share of events routed there times the
+    mean router probability), which the model adds to the training loss times aux_weight.
+    """
+
+    def __init__(self, d_model: int, dropout: float = 0.0, n_experts: int = 4, top_k: int = 2,
+                 mult: float = 4 / 3, aux_weight: float = 0.01):
+        super().__init__()
+        if not 1 <= top_k <= n_experts:
+            raise ValueError("need 1 <= top_k <= n_experts")
+        self.router = nn.Linear(d_model, n_experts, bias=False)
+        self.experts = nn.ModuleList(SwiGLU(d_model, dropout, mult=mult) for _ in range(n_experts))
+        self.n_experts, self.top_k, self.aux_weight = n_experts, top_k, aux_weight
+        self.aux_loss = torch.zeros(())
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        shape = x.shape
+        flat = x.reshape(-1, shape[-1])
+        probs = torch.softmax(self.router(flat), dim=-1)
+        weight, chosen = probs.topk(self.top_k, dim=-1)
+        weight = weight / weight.sum(dim=-1, keepdim=True)
+        out = torch.zeros_like(flat)
+        for e, expert in enumerate(self.experts):
+            rows, slot = (chosen == e).nonzero(as_tuple=True)
+            if len(rows):
+                out.index_add_(0, rows, expert(flat[rows]) * weight[rows, slot].unsqueeze(-1))
+        share = torch.zeros(self.n_experts, device=x.device).index_add_(
+            0, chosen.reshape(-1), torch.ones(chosen.numel(), device=x.device)) / chosen.numel()
+        self.aux_loss = self.n_experts * (share * probs.mean(dim=0)).sum()
+        return out.reshape(shape)

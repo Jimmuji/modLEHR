@@ -1,0 +1,4 @@
+# Plain GPT with query and key normalization before attention (OLMo 2, Gemma 3, Qwen3).
+defaults: [gpt_baseline.yaml]
+model:
+  attention_options: {qk_norm: true}

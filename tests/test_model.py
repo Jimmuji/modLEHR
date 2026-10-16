@@ -116,3 +116,31 @@ def test_alibi_age_penalizes_older_events():
 
     attn = alibi_age(d_model=8, n_heads=2)
     assert torch.all(attn.slopes > 0) and attn.slopes[0, 0] > attn.slopes[0, 1]  # each head its own time span
+
+
+def test_new_parts_build_and_train_step():
+    for kw in ({"attention": "mla"}, {"attention": "local_age"}, {"attention_options": {"qk_norm": True}},
+               {"ffn": "moe", "ffn_options": {"n_experts": 4, "top_k": 2}}):
+        m = model(**kw).train()
+        loss, parts = m.loss(batch())
+        loss.backward()
+        assert torch.isfinite(loss), kw
+        if kw.get("ffn") == "moe":
+            assert parts["aux"] > 0
+
+
+def test_mla_uses_a_low_rank_latent():
+    from modlehr.model.layers import mla
+
+    attn = mla(d_model=32, n_heads=4, kv_rank=8)
+    assert attn.kv[0].out_features == 8
+
+
+def test_local_age_ignores_events_outside_the_window():
+    m, x = model(attention="local_age", attention_options={"window_years": 10.0}), batch()
+    # ages run 0 to 60 over 10 events, so the last event (age 60) cannot see the first (age 0)
+    y = {k: v.clone() for k, v in x.items()}
+    y["tokens"][0, 0] = (y["tokens"][0, 0] % 19) + 1
+    out_x, out_y = m(x), m(y)
+    assert torch.allclose(out_x[0, -1], out_y[0, -1], atol=1e-5)
+    assert not torch.allclose(out_x[0, 1], out_y[0, 1], atol=1e-5)  # but an event at age 6.7 can

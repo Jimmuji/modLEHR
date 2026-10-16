@@ -1,0 +1,6 @@
+# Plain GPT with a mixture of experts in place of the MLP (Mixtral, DeepSeek, Qwen3-MoE):
+# 4 SwiGLU experts, 2 per event, plus a load-balancing loss.
+defaults: [gpt_baseline.yaml]
+model:
+  ffn: moe
+  ffn_options: {n_experts: 4, top_k: 2, aux_weight: 0.01}

@@ -62,7 +62,7 @@ With [uv](https://docs.astral.sh/uv/):
 git clone https://github.com/Jimmuji/modLEHR.git && cd modLEHR
 uv venv --python 3.13 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
-.venv/bin/python -m pytest          # 34 tests, about 7 seconds
+.venv/bin/python -m pytest          # 37 tests, about 8 seconds
 ```
 
 With plain pip: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
@@ -327,7 +327,8 @@ difference over the pairs both scored, with a 95% interval.
 
 `scripts/compare_synthea.sh` trains the baseline and every variant over seeds 1 to 3, fits the
 classical baselines, and prints the comparison. Each run takes about 7 minutes on Apple MPS, so the
-15 runs take close to two hours; `SEEDS="1" scripts/compare_synthea.sh` runs one seed.
+33 runs (11 variants, 3 seeds) take about four hours; `SEEDS="1" scripts/compare_synthea.sh` runs one
+seed.
 
 ## Data format: MEDS
 
@@ -393,15 +394,16 @@ Every part is registered by name and picked in `configs/model/`:
 
 | Kind | Registered | Notes |
 |---|---|---|
-| `attention` | `mha`, `gqa`, `rope`, `rope_age`, `alibi_age` | multi-head (GPT-2); grouped-query (Llama, Qwen); rotary over event order; rotary over age; ALiBi over age (BLOOM, MPT use it over positions) |
+| `attention` | `mha`, `gqa`, `rope`, `rope_age`, `alibi_age`, `mla`, `local_age` | multi-head (GPT-2); grouped-query (Llama, Qwen); rotary over event order; rotary over age; ALiBi over age (BLOOM, MPT use it over positions); multi-head latent attention, keys and values from a low-rank latent (DeepSeek-V2, V3); a sliding window over the last N years (Mistral and Gemma slide over positions). Any of them takes `qk_norm: true`, query and key normalization (OLMo 2, Gemma 3, Qwen3) |
 | `norm` | `layernorm`, `rmsnorm` | |
-| `ffn` | `gelu_mlp`, `swiglu` | GELU MLP (GPT-2); gated SwiGLU (Llama) |
+| `ffn` | `gelu_mlp`, `swiglu`, `moe` | GELU MLP (GPT-2); gated SwiGLU (Llama); mixture of experts, each event routed to 2 of 4 SwiGLU experts with a load-balancing loss (Mixtral, DeepSeek, Qwen3-MoE). With the defaults an event passes through as many weights as the GELU MLP; the experts add capacity, not compute |
 | `time_encoding` | `sinusoidal_age`, `none` | |
 | `value_encoding` | `none`, `mlp` | `mlp` reads values kept with `value_mode: continuous` |
 | `head` | `competing_risk` | |
 | `target_grouping` | `identity`, `icd10_3char`, `icd_3char` | `icd_3char` handles ICD-9 and ICD-10 mixed, as in MIMIC-IV |
 
-Options go in the config, for example `attention_options: {n_kv_heads: 2}`. All keys and
+Options go in the config, for example `attention_options: {n_kv_heads: 2}` or
+`ffn_options: {n_experts: 8}`. Each part has a ready model config in `configs/model/`. All keys and
 defaults: [docs/configuration.md](docs/configuration.md).
 
 ## Results so far
@@ -526,7 +528,7 @@ it with the MEDS tools rather than narrowing the event rules.
 ## Roadmap
 
 - Disease codes: ICD-9 to ICD-10 through the CMS General Equivalence Mappings, and a phecode grouping
-- More architectures from recent language models, compared over several seeds
+- Every architecture compared over several seeds, on MIMIC-IV
 - Clinical notes as an input, through `text_value` and the input head's `extra` hook
 - Prediction tasks in the MEDS-DEV label format, for comparison with other MEDS models
 

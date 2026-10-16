@@ -69,6 +69,7 @@ class ModelConfig:
     attention_options: dict = field(default_factory=dict)  # passed to the attention, e.g. {n_kv_heads: 2}
     norm: str = "layernorm"
     ffn: str = "gelu_mlp"
+    ffn_options: dict = field(default_factory=dict)  # passed to the feed-forward part, e.g. {n_experts: 8, top_k: 2}
     head: str = "competing_risk"
 
 

@@ -1,0 +1,4 @@
+# Plain GPT with the gated SwiGLU feed-forward layer (Llama) in place of the GELU MLP.
+defaults: [gpt_baseline.yaml]
+model:
+  ffn: swiglu

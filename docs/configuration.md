@@ -104,10 +104,11 @@ the `description_regex` keeps only disorders as targets.
 | `max_len` | `256` | Events per training window, and the most recent events the model sees at evaluation |
 | `time_encoding` | `sinusoidal_age` | `sinusoidal_age`, `none` |
 | `value_encoding` | `none` | `none`, `mlp` (use with `data.value_mode: continuous`) |
-| `attention` | `mha` | `mha`, `gqa`, `rope`, `rope_age`, `alibi_age` |
+| `attention` | `mha` | `mha`, `gqa`, `rope`, `rope_age`, `alibi_age`, `mla`, `local_age` |
 | `attention_options` | `{}` | Passed to the attention; see below |
 | `norm` | `layernorm` | `layernorm`, `rmsnorm` |
-| `ffn` | `gelu_mlp` | `gelu_mlp` (hidden width 4 x `d_model`), `swiglu` (gated, hidden width 8/3 x `d_model`) |
+| `ffn` | `gelu_mlp` | `gelu_mlp` (hidden width 4 x `d_model`), `swiglu` (gated, hidden width 8/3 x `d_model`), `moe` (mixture of experts) |
+| `ffn_options` | `{}` | Passed to the feed-forward part; see below |
 | `head` | `competing_risk` | `competing_risk` |
 
 `attention_options` that every attention accepts:
@@ -118,6 +119,20 @@ the `description_regex` keeps only disorders as targets.
 | `rope_base` | `10000` | Rotary frequency base (`rope`, `rope_age`) |
 | `age_scale` | `1.0` | Multiplies ages, in years, before they set rotations (`rope_age`) or penalties (`alibi_age`) |
 | `max_slope_exponent` | `8.0` | `alibi_age`: head h has slope 2^(-8h/n_heads) per year |
+| `qk_norm` | `false` | RMSNorm on each head's queries and keys before their dot product |
+| `kv_rank` | none (`mla`: `d_model` / 4) | Compute keys and values from a latent of this size |
+| `window_years` | none (`local_age`: 5) | Attend only to events in this many years before the current one |
+
+`ffn_options` for `moe`:
+
+| Option | Default | Meaning |
+|---|---|---|
+| `n_experts` | `4` | SwiGLU experts |
+| `top_k` | `2` | Experts each event is routed to |
+| `mult` | `4/3` | Expert hidden width as a multiple of `d_model`; with `top_k: 2` the active width matches the GELU MLP |
+| `aux_weight` | `0.01` | Weight of the load-balancing loss added during training |
+
+`gelu_mlp` and `swiglu` take `mult` too (4 and 8/3 by default).
 
 `modlehr train` prints the parameter count. The Synthea baseline (128 wide, 6 layers) has 1.25M.
 
