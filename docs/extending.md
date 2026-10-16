@@ -179,6 +179,7 @@ Then register the adapter as a `modlehr convert` source in `modlehr/cli.py` (the
 
 ## Tests
 
-`pytest` runs in seconds on a 160-subject synthetic MEDS dataset written in `tests/conftest.py`.
+`pytest` runs in seconds on a 160-subject synthetic MEDS dataset from `modlehr.data.toy` (the same
+generator as `modlehr convert toy`).
 A new part or source should come with a test of the property it is for; the end-to-end tests
 (`tests/test_end_to_end.py`, `tests/test_tools.py`) catch most wiring mistakes.

@@ -528,7 +528,7 @@ configs/
   model/           which registered parts make up the model
   experiment/      data + model + training + evaluation for one run
 src/modlehr/
-  data/            MEDS reader and validation; adapters/ convert sources to MEDS
+  data/            MEDS reader and validation; adapters/ convert sources to MEDS; toy.py, a synthetic dataset
   prepare/         event selection, target grouping, vocabularies, values, labels, batches
   model/           input head, swappable layers, output heads, the assembled model
   train/           training loop
