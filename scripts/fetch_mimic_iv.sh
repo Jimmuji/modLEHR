@@ -2,6 +2,7 @@
 # Resume the raw MIMIC-IV 3.1 download from PhysioNet, then check it against SHA256SUMS.txt.
 #
 #   scripts/fetch_mimic_iv.sh                               # MIMIC-IV 3.1
+#   FILES="hosp/omr.csv.gz" scripts/fetch_mimic_iv.sh        # only these files of the release
 #   RELEASE=mimic-iv-note/2.2 scripts/fetch_mimic_iv.sh     # MIMIC-IV-Note (its own data use agreement)
 #
 # The username (or PN_USER) and password are typed at the prompt and kept in this shell only.
@@ -20,16 +21,23 @@ PN_USER="${PN_USER:-}"
 read -r -s -p "PhysioNet password for $PN_USER: " PN_PASS; echo
 mkdir -p "$RAW"
 
-sha() { shasum -a 256 "$1" | cut -d' ' -f1; }
+sha() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
 
-get() {  # get <relative path>: resume a partial file. --fail keeps an error page (403) out of the file.
-  local rel="$1" dest="$RAW/$1" esc
+# physionet.org answers curl with 403 before it looks at the credentials, so this uses wget, which its
+# own instructions use. The credentials go to wget in a file only this user can read, removed on exit,
+# so they never appear in the process list.
+command -v wget >/dev/null || { echo "wget is needed (physionet.org refuses curl); on a Mac: brew install wget"; exit 1; }
+CRED=$(umask 077 && mktemp "${TMPDIR:-/tmp}/physionet.XXXXXX")
+trap 'rm -f "$CRED"' EXIT
+printf 'user = %s\npassword = %s\n' "$PN_USER" "$PN_PASS" > "$CRED"
+unset PN_PASS
+
+get() {  # get <relative path>: resume a partial file; an error page (403, 401) is never saved as the file
+  local rel="$1" dest="$RAW/$1"
   mkdir -p "$(dirname "$dest")"
-  esc="$PN_USER:$PN_PASS"; esc="${esc//\\/\\\\}"; esc="${esc//\"/\\\"}"
   for attempt in 1 2 3 4 5; do
-    # the credentials go to curl on stdin, so they never appear in the process list
-    printf 'user = "%s"\n' "$esc" | curl -K - -sS -L --fail -C - --retry 3 --retry-delay 5 --connect-timeout 30 \
-         -o "$dest" "$BASE/$rel" && return 0
+    wget -q -c --tries=3 --timeout=60 --config="$CRED" -O "$dest" "$BASE/$rel" && return 0
+    [ -s "$dest" ] || rm -f "$dest"  # wget leaves an empty file behind when the request fails
     echo "  retry $attempt: $rel"
     sleep 10
   done
@@ -51,6 +59,15 @@ rm -f "$RAW/SHA256SUMS.txt.old"
 files=()
 while read -r rel; do files+=("$rel"); done < <(awk '{print $2}' "$RAW/SHA256SUMS.txt")
 echo "${#files[@]} files in the release"
+if [ -n "${FILES:-}" ]; then  # only the files asked for, each checked against the release's list
+  wanted=()
+  for rel in $FILES; do
+    grep -q " $rel\$" "$RAW/SHA256SUMS.txt" || { echo "$rel is not in this release"; exit 1; }
+    wanted+=("$rel")
+  done
+  files=("${wanted[@]}")
+  echo "fetching ${#files[@]} of them: $FILES"
+fi
 
 for rel in "${files[@]}"; do
   want=$(awk -v f="$rel" '$2==f {print $1}' "$RAW/SHA256SUMS.txt")
