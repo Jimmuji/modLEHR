@@ -103,6 +103,7 @@ class EvaluateConfig:
     landmarks: list[float] = field(default_factory=lambda: [40.0, 50.0, 60.0, 70.0])
     horizon_years: float = 5.0
     min_cases: int = 20
+    controls: str = "at_risk"  # "at_risk" (censored dropped) or "never" (Delphi-2M convention)
     split: str = "held_out"
     batch_size: int = 256
     likelihood: bool = True  # also report the held-out negative log-likelihood (event and time parts)

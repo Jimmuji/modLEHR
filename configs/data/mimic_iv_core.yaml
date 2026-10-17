@@ -1,0 +1,18 @@
+# MIMIC-IV 3.1, diagnoses only: written by `modlehr convert mimic-iv-core`, which reads
+# hosp/patients.csv.gz, hosp/admissions.csv.gz and hosp/diagnoses_icd.csv.gz. Same code families
+# as the full ETL, minus the measurement tables, so this is the Delphi-2M data shape on MIMIC:
+# sex, disease codes, death, and the hospital contacts that time them.
+#   DIAGNOSIS//ICD//9//4280, DIAGNOSIS//ICD//10//E119   diagnoses, timed at hospital discharge
+#   HOSPITAL_ADMISSION//<type>//<location>, ED_REGISTRATION
+data:
+  meds_dir: data/mimic_iv_core_meds
+  prepared_dir: runs/prepared/mimic_iv_core
+  target_grouping: icd_3char         # ICD-9 and ICD-10 diagnoses to three-character categories
+  min_subjects_per_token: 100
+  value_mode: none                   # these tables carry no measurements
+  events:
+    - {name: sex, role: static, prefix: "GENDER//"}
+    - {name: death, role: target, codes: ["MEDS_DEATH"]}
+    - {name: diagnoses, role: target, prefix: "DIAGNOSIS//ICD//"}
+    - {name: admissions, role: context, prefix: "HOSPITAL_ADMISSION//"}
+    - {name: emergency, role: context, codes: ["ED_REGISTRATION"]}

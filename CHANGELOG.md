@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+Data
+- `modlehr convert mimic-iv-core`: MIMIC-IV's patients, admissions and diagnoses tables → MEDS,
+  the Delphi-2M data shape on MIMIC, with `configs/data/mimic_iv_core.yaml` and
+  `scripts/run_mimic_iv_core.sh`. Death is timed as in the official ETL (in-hospital `deathtime`
+  first, then `dod`)
+- `scripts/fetch_mimic_iv.sh` resumes the raw MIMIC-IV download and checks it against SHA256SUMS.txt
+
+Evaluation
+- `evaluate.controls`: `at_risk` (the default) or `never`, Delphi-2M's definition, where controls
+  are subjects who never have the disease. The convention is recorded in `evaluate.json` and the
+  classical baselines use the same one
+
 ## 0.2.0 (October 2026)
 
 Data

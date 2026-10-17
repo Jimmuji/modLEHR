@@ -106,8 +106,8 @@ def run_baselines(cfg: Config, models: tuple[str, ...] = MODELS, max_dense_featu
     rows: dict[str, list[dict]] = {m: [] for m in models}
     t0 = time.time()
     for L in cfg.evaluate.landmarks:
-        tr = landmark_task(train_split, vocab, L, H, first_train)
-        ev = landmark_task(eval_split, vocab, L, H, first_eval)
+        tr = landmark_task(train_split, vocab, L, H, first_train, cfg.evaluate.controls)
+        ev = landmark_task(eval_split, vocab, L, H, first_eval, cfg.evaluate.controls)
         X_tr = landmark_features(train_split, tr, n_tokens, with_values)
         X_ev = landmark_features(eval_split, ev, n_tokens, with_values)
         if "gbm" in models:  # gradient boosting needs a dense matrix: keep the most common columns

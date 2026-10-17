@@ -124,7 +124,7 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
 
     rows, calib, calib_tables = [], [], []
     for L in cfg.evaluate.landmarks:
-        task = landmark_task(split, vocab, L, H, first)
+        task = landmark_task(split, vocab, L, H, first, cfg.evaluate.controls)
         risk = landmark_risks(model, split, task.subjects, L, H, cfg.evaluate.batch_size, device)
         if len(task.subjects):
             c_summary, c_table = calibration(split, task.subjects, L, H, risk)
@@ -139,7 +139,8 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
                          "auc": roc_auc_score(case[keep], risk[keep, k])})
     result = pd.DataFrame(rows, columns=["target", "landmark", "cases", "controls", "auc"])
 
-    summary = {**summarize(result), "horizon_years": H, "landmarks": cfg.evaluate.landmarks,
+    summary = {**summarize(result), "horizon_years": H, "controls": cfg.evaluate.controls,
+               "landmarks": cfg.evaluate.landmarks,
                "split": cfg.evaluate.split, "checkpoint": str(checkpoint)}
     if calib:
         expected, observed = sum(c["expected_any"] for c in calib), sum(c["observed_any"] for c in calib)
@@ -156,7 +157,7 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
     if len(result):
         lo, hi = summary["mean_auc_ci95"]
         log(f"[evaluate] mean AUC {summary['mean_auc']:.3f} (95% CI {lo:.3f} to {hi:.3f}) over "
-            f"{summary['pairs']} target and landmark pairs")
+            f"{summary['pairs']} target and landmark pairs, controls={cfg.evaluate.controls}")
     else:
         log("[evaluate] no target had enough cases and controls; lower evaluate.min_cases or add landmarks")
     if "calibration" in summary:

@@ -1,0 +1,21 @@
+# Plain GPT on MIMIC-IV diagnoses. Same model and evaluation as mimic_iv_gpt.yaml, so the two can
+# be compared once the full ETL has run and the measurement tables are in.
+defaults: [../data/mimic_iv_core.yaml, ../model/gpt_baseline.yaml]
+model:
+  d_model: 256
+  n_layers: 6
+  n_heads: 8
+  max_len: 512
+train:
+  out_dir: runs/mimic_iv_core_gpt
+  batch_size: 64
+  steps: 20000
+  warmup: 1000
+  eval_every: 1000
+evaluate:
+  # MIMIC-IV is adults seen in hospital, and a record ends at the last hospital contact
+  # (death is linked up to one year after discharge), so landmarks start at 40 and the
+  # horizon is shorter than on Synthea.
+  landmarks: [40, 50, 60, 70, 80]
+  horizon_years: 2
+  min_cases: 25

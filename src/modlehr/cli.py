@@ -2,6 +2,7 @@
 
     modlehr convert  toy --out data/toy_meds          (a synthetic dataset to try everything in a minute)
     modlehr convert  synthea --raw-dir RAW --out data/synthea_meds
+    modlehr convert  mimic-iv-core --raw-dir RAW --out data/mimic_iv_core_meds   (diagnoses only)
     modlehr validate --meds-dir data/synthea_meds
     modlehr prepare  --config configs/experiment/synthea_gpt.yaml
     modlehr info     --config configs/experiment/synthea_gpt.yaml
@@ -40,9 +41,10 @@ def build_parser() -> argparse.ArgumentParser:
     sub = ap.add_subparsers(dest="command", required=True)
 
     conv = sub.add_parser("convert", help="convert a data source to MEDS")
-    conv.add_argument("source", choices=["synthea", "mimic-iv-note", "toy"])
+    conv.add_argument("source", choices=["synthea", "mimic-iv-core", "mimic-iv-note", "toy"])
     conv.add_argument("--raw-dir",
-                      help="synthea: the CSV export; mimic-iv-note: the folder with discharge.csv.gz and radiology.csv.gz")
+                      help="synthea: the CSV export; mimic-iv-core: the MIMIC-IV release directory with hosp/; "
+                           "mimic-iv-note: the folder with discharge.csv.gz and radiology.csv.gz")
     conv.add_argument("--out", required=True, help="MEDS output directory")
     conv.add_argument("--meds-dir", help="mimic-iv-note: the MIMIC-IV MEDS dataset to add the notes to")
     conv.add_argument("--note-kinds", default="discharge,radiology", help="mimic-iv-note: which note files to add")
@@ -110,6 +112,9 @@ def main(argv: list[str] | None = None) -> None:
             raise SystemExit(f"convert {args.source} needs --raw-dir")
         if args.source == "synthea":
             from modlehr.data.adapters.synthea import convert
+            print(convert(args.raw_dir, args.out))
+        elif args.source == "mimic-iv-core":
+            from modlehr.data.adapters.mimic_iv_core import convert
             print(convert(args.raw_dir, args.out))
         else:
             from modlehr.data.adapters.mimic_iv_note import convert

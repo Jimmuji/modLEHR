@@ -42,6 +42,7 @@ raw records ──convert──> MEDS ──prepare──> timelines ──train
 |---|---|
 | `modlehr convert toy` | Write a small synthetic MEDS dataset, to try every command in a minute |
 | `modlehr convert synthea` | Synthea CSV export → MEDS. Other sources use their existing MEDS converters |
+| `modlehr convert mimic-iv-core` | MIMIC-IV's three diagnosis tables (patients, admissions, diagnoses_icd) → MEDS, without the measurement tables |
 | `modlehr convert mimic-iv-note` | Merge MIMIC-IV-Note (discharge summaries, radiology reports) into MIMIC-IV MEDS as text events |
 | `modlehr validate` | Check a MEDS dataset against the official schemas |
 | `modlehr prepare` | Select events, compute ages, group disease codes, build vocabularies, scale or bin values, attach labels |
@@ -277,6 +278,13 @@ AUC per (target, landmark) pair with at least `min_cases` cases and controls; th
 mean over pairs, with an approximate 95% interval. The defaults are landmarks 40, 50, 60 and 70
 and a 5-year horizon.
 
+`evaluate.controls` picks who the controls are. The default `at_risk` is the paragraph above: a
+control must still be under observation at L + H, so a control may develop the disease later, and
+censored subjects are dropped. `controls: never` keeps every subject with no record of the disease
+at all, censored or not, which is how Delphi-2M defines controls. Which one is in force changes the
+numbers, so it is written into `evaluate.json` and printed with the mean, and `modlehr baseline`
+reads the same setting.
+
 **Calibration.** At each landmark, the head's probability that the next outcome is k and comes
 within the horizon is compared with what came next in the record; patients whose record ends
 sooner with no outcome are left out. Reported as expected over observed outcomes (1 is calibrated),
@@ -500,6 +508,22 @@ starting point (256 wide, 6 layers, 512-event windows, 20,000 steps; landmarks 4
 2-year horizon, since a MIMIC record ends at the last hospital contact); on a CUDA GPU add
 `--set train.precision=bf16`.
 
+**MIMIC-IV diagnoses only.** The full ETL reads every table in the release, which is a 7 GB
+download. `modlehr convert mimic-iv-core` reads the three tables that carry the diagnosis history
+(`hosp/patients.csv.gz`, `hosp/admissions.csv.gz`, `hosp/diagnoses_icd.csv.gz`, 56 MB) and
+writes the same code families, so `configs/data/mimic_iv_core.yaml` is `mimic_iv.yaml` with the
+measurement rules removed. This is the Delphi-2M data shape on MIMIC: sex, disease codes, death,
+and the hospital contacts that time them. `scripts/run_mimic_iv_core.sh` runs it end to end and
+evaluates under both control conventions:
+
+```bash
+RAW=~/mimic_dl/physionet.org/files/mimiciv/3.1 scripts/run_mimic_iv_core.sh
+```
+
+It is the comparison that says what the measurements are worth, not a replacement for the full run.
+`scripts/fetch_mimic_iv.sh` resumes the raw download with a PhysioNet account, checking each file
+against the release's `SHA256SUMS.txt`.
+
 **Clinical notes.** MIMIC-IV-Note is a separate PhysioNet module and the ETL above does not read
 it. `modlehr convert mimic-iv-note` merges its discharge summaries and radiology reports into the
 MIMIC-IV MEDS data as `NOTE//DISCHARGE` and `NOTE//RADIOLOGY` events with the text in `text_value`,
@@ -552,7 +576,8 @@ src/modlehr/
   registry.py      name → part, for everything that can be swapped
   config.py        experiment configuration and command-line overrides
   cli.py           the commands
-scripts/           compare_synthea.sh: every Synthea variant over three seeds; run_mimic_iv.sh: full MIMIC-IV
+scripts/           compare_synthea.sh: every Synthea variant over three seeds; run_mimic_iv.sh: full MIMIC-IV;
+                   run_mimic_iv_core.sh: MIMIC-IV diagnoses only; fetch_mimic_iv.sh: resume the raw download
 tests/             unit tests and end-to-end tests on a tiny synthetic MEDS dataset
 docs/              design notes, configuration reference, extension guide, disease codes
 ```

@@ -5,8 +5,18 @@ event at or before L, last event after L):
 
     left out   subjects who already had k at or before L
     case       the first k falls in (L, L + H]
-    control    no k by L + H, and the record reaches L + H
-    left out   no k, and the record ends before L + H (censored)
+
+Who counts as a control depends on `evaluate.controls`:
+
+    "at_risk" (default)   no k by L + H, and the record reaches L + H; subjects whose record
+                          ends before L + H without k are left out as censored. A control here
+                          may still develop k later, which is the clinically useful question
+                          and the harder one.
+
+    "never"               no k anywhere in the record, censored or not. This is the Delphi-2M
+                          convention, where controls are people who never have the disease.
+                          Easier to separate, since never-havers differ systematically from
+                          cases, so the AUCs run higher and are not comparable with "at_risk".
 
 Inputs are every event at or before L.
 """
@@ -24,6 +34,9 @@ from modlehr.prepare.timeline import first_target_ages
 from modlehr.prepare.vocabulary import Vocabulary
 
 
+CONTROLS = ("at_risk", "never")
+
+
 @dataclass
 class LandmarkTask:
     landmark: float
@@ -31,25 +44,31 @@ class LandmarkTask:
     subjects: np.ndarray  # indices into the split of the subjects in the record at the landmark
     first: np.ndarray     # [n, n_targets] age at the first occurrence of each target, inf if never
     end: np.ndarray       # [n] age at the last event
+    controls: str = "at_risk"
 
     def labels(self, k: int) -> tuple[np.ndarray, np.ndarray]:
         """(keep, case) for target k: keep marks the subjects in the task, case the cases among all."""
         f = self.first[:, k]
         lo, hi = self.landmark, self.landmark + self.horizon
         case = (f > lo) & (f <= hi)
-        keep = (f > lo) & (case | (self.end >= hi))
+        if self.controls == "never":
+            keep = (f > lo) & (case | np.isinf(f))
+        else:
+            keep = (f > lo) & (case | (self.end >= hi))
         return keep, case
 
 
 def landmark_task(split: PreparedSplit, vocab: Vocabulary, landmark: float, horizon: float,
-                  first: np.ndarray | None = None) -> LandmarkTask:
+                  first: np.ndarray | None = None, controls: str = "at_risk") -> LandmarkTask:
     """The task at one landmark. Pass `first` (from first_target_ages) to reuse it across landmarks."""
+    if controls not in CONTROLS:
+        raise ValueError(f"evaluate.controls must be one of {CONTROLS}, got {controls!r}")
     ages, offsets = split.arrays["ages"], split.offsets
     start, end = ages[offsets[:-1]], ages[offsets[1:] - 1]
     subjects = np.flatnonzero((start <= landmark) & (end > landmark))
     if first is None:
         first = first_target_ages(split.arrays["tokens"], ages, offsets, vocab)
-    return LandmarkTask(landmark, horizon, subjects, first[subjects], end[subjects])
+    return LandmarkTask(landmark, horizon, subjects, first[subjects], end[subjects], controls)
 
 
 def history_before(split: PreparedSplit, i: int, landmark: float, max_len: int | None = None) -> dict[str, np.ndarray]:

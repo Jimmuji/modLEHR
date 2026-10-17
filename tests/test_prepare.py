@@ -105,3 +105,30 @@ def test_exclude_regex():
     codes = pd.DataFrame({"code": ["LAB//1//mg", "LAB//SPECIMEN_COLLECTED//1//STAT"], "description": [None, None]})
     rule = EventRule(name="labs", role="measurement", prefix="LAB//", exclude_regex="SPECIMEN_COLLECTED")
     assert list(classify_codes(codes, [rule]).index) == ["LAB//1//mg"]
+
+
+def test_controls_never_keeps_more_than_at_risk():
+    """The two conventions differ exactly on censored subjects who never get the target.
+
+    "at_risk" drops a subject whose record ends inside the horizon without the target;
+    "never" keeps them as a control. So "never" keeps at least as many, and the cases
+    are the same either way.
+    """
+    import numpy as np
+
+    from modlehr.evaluate.task import LandmarkTask
+
+    inf = float("inf")
+    #            case in window, control reaching the horizon, censored never-haver, had it before L
+    first = np.array([[52.0], [inf], [inf], [45.0]])
+    end = np.array([60.0, 60.0, 52.0, 60.0])
+
+    at_risk = LandmarkTask(50.0, 5.0, np.arange(4), first, end, "at_risk")
+    never = LandmarkTask(50.0, 5.0, np.arange(4), first, end, "never")
+
+    keep_a, case_a = at_risk.labels(0)
+    keep_n, case_n = never.labels(0)
+
+    assert list(case_a) == list(case_n) == [True, False, False, False]
+    assert list(keep_a) == [True, True, False, False]   # censored never-haver dropped
+    assert list(keep_n) == [True, True, True, False]    # kept as a control
