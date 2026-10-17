@@ -45,6 +45,10 @@ class EventRule:
     exclude_regex: str | None = None  # codes matching this are left out of the rule
     thin_years: float | None = None  # keep the first event of each code per window of this many years
     first_occurrence: bool | None = None
+    # Do events of this rule extend follow-up? Set false for events recorded where the targets are not,
+    # e.g. outpatient BMI when diagnoses come only from admissions: they stay inputs, but a subject is
+    # not counted as followed (a control, or censored later) because of them.
+    follow_up: bool = True
 
 
 @dataclass

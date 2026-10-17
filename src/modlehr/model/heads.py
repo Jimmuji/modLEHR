@@ -4,7 +4,10 @@ competing_risk: one log-rate per target (per year). Between events each target k
 constant hazard lambda_k; the next target event is k after dt years with likelihood
 lambda_k * exp(-Lambda * dt), Lambda = sum_k lambda_k, and a censored stretch of dt years has
 likelihood exp(-Lambda * dt). This is Delphi's next-token plus waiting-time loss written as one
-competing-risks likelihood, with censoring at the end of the record handled directly.
+competing-risks likelihood, with censoring at the end of follow-up handled directly. Targets recorded
+at the same time (a set S, e.g. the diagnoses of one discharge) have likelihood
+prod_{k in S} lambda_k * exp(-Lambda * dt), the same hazards observed at a recorded resolution;
+with one target it is the formula above.
 """
 
 from __future__ import annotations
@@ -33,11 +36,13 @@ class CompetingRiskHead(nn.Module):
 
     @staticmethod
     def loss(log_rates: torch.Tensor, next_target: torch.Tensor, dt: torch.Tensor, mask: torch.Tensor) -> tuple[torch.Tensor, dict]:
-        """Mean negative log-likelihood over masked positions. next_target = -1 means censored."""
+        """Mean negative log-likelihood over masked positions. next_target is [B, T] (one target, -1 for
+        censored) or [B, T, K] (every target of the next target time, -1 padded; all -1 for censored)."""
         log_total = torch.logsumexp(log_rates, dim=-1)
-        event = next_target >= 0
-        log_rate_k = log_rates.gather(-1, next_target.clamp(min=0).unsqueeze(-1)).squeeze(-1)
-        nll_event = -log_rate_k * event
+        targets = next_target if next_target.dim() == log_rates.dim() else next_target.unsqueeze(-1)
+        present = (targets >= 0).to(log_rates.dtype)
+        log_rate_k = log_rates.gather(-1, targets.clamp(min=0))
+        nll_event = -(log_rate_k * present).sum(dim=-1)
         nll_time = log_total.exp() * dt
         m = mask.to(log_rates.dtype)
         n = m.sum().clamp(min=1.0)

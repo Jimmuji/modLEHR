@@ -4,7 +4,11 @@ A prepared split is a directory with one .npy file per array, read memory-mapped
 larger than memory can still be trained on:
 
     subject_ids  [n_subjects]       offsets      [n_subjects + 1]  (events of subject i are offsets[i]:offsets[i+1])
-    tokens ages values next_target dt loss_mask   [n_events]       (see prepare.timeline)
+    follow_up_end [n_subjects]
+    tokens ages values target next_target dt loss_mask   [n_events]   (see prepare.timeline)
+
+Splits written before target and follow_up_end existed still load: they get one label per time and
+follow-up to the last event.
 
 Splits of data with text events also hold text_ref, note_offsets and note_words (see prepare.text).
 """
@@ -18,11 +22,12 @@ import numpy as np
 import torch
 
 from modlehr.prepare.text import TEXT_FILES
-from modlehr.prepare.timeline import ARRAYS
+from modlehr.prepare.timeline import ARRAYS, SUBJECT_ARRAYS, next_target_sets
 
-FILES = ("subject_ids", "offsets") + ARRAYS
+FILES = ("subject_ids", "offsets") + ARRAYS + SUBJECT_ARRAYS
 DTYPES = {"subject_ids": np.int64, "offsets": np.int64, "tokens": np.int32, "ages": np.float32, "values": np.float32,
-          "next_target": np.int32, "dt": np.float32, "loss_mask": np.bool_}
+          "target": np.int32, "next_target": np.int32, "dt": np.float32, "loss_mask": np.bool_,
+          "follow_up_end": np.float32}
 
 
 class PreparedSplit:
@@ -33,9 +38,14 @@ class PreparedSplit:
                 self.arrays = {k: z[k] for k in z.files}
         else:
             names = FILES + (TEXT_FILES if (path / "text_ref.npy").exists() else ())
-            self.arrays = {k: np.load(path / f"{k}.npy", mmap_mode="r") for k in names}
+            self.arrays = {k: np.load(path / f"{k}.npy", mmap_mode="r") for k in names if (path / f"{k}.npy").exists()}
         self.offsets = np.asarray(self.arrays["offsets"])
         self.subject_ids = np.asarray(self.arrays["subject_ids"])
+        if "follow_up_end" in self.arrays:
+            self.follow_up_end = np.asarray(self.arrays["follow_up_end"])
+        else:  # written before follow-up was tracked: it ran to the last event
+            self.follow_up_end = np.asarray(self.arrays["ages"])[self.offsets[1:] - 1] if len(self.offsets) > 1 \
+                else np.zeros(0, np.float32)
         self.has_text = "text_ref" in self.arrays
         if self.has_text:
             self.note_offsets = np.asarray(self.arrays["note_offsets"])
@@ -47,10 +57,14 @@ class PreparedSplit:
         return np.diff(self.offsets)
 
     def subject(self, i: int, start: int = 0, stop: int | None = None) -> dict:
-        """Events start:stop of subject i. With text, row["text"] lists each event's note words (or None)."""
+        """Events start:stop of subject i. row["next_set"] [n, K] holds every target of the next target
+        time (when the split has `target`). With text, row["text"] lists each event's note words (or None)."""
         a, b = self.offsets[i], self.offsets[i + 1]
         stop = (b - a) if stop is None else stop
-        row = {k: np.asarray(self.arrays[k][a + start:a + stop]) for k in ARRAYS}
+        row = {k: np.asarray(self.arrays[k][a + start:a + stop]) for k in ARRAYS if k in self.arrays}
+        if "target" in self.arrays:
+            row["next_set"] = next_target_sets(np.asarray(self.arrays["ages"][a:b]), np.asarray(self.arrays["target"][a:b]),
+                                               float(self.follow_up_end[i]), start, stop)
         if self.has_text:
             refs = np.asarray(self.arrays["text_ref"][a + start:a + stop])
             words = self.arrays["note_words"]
@@ -102,6 +116,9 @@ class SplitWriter:
         order = np.argsort(subject_ids, kind="stable")
         offsets = np.concatenate([[0], np.cumsum(stop[order] - start[order])]).astype(np.int64)
 
+        for k in SUBJECT_ARRAYS:
+            per_subject = np.concatenate([np.asarray(load(i, k)) for i in chunks]) if sids else np.zeros(0)
+            np.save(self.out_dir / f"{k}.npy", per_subject[order].astype(DTYPES[k]))
         for k in ARRAYS:
             parts = [load(i, k) for i in chunks]
             out = np.lib.format.open_memmap(self.out_dir / f"{k}.npy", mode="w+", dtype=DTYPES[k], shape=(int(offsets[-1]),))
@@ -177,6 +194,12 @@ def collate(rows: list[dict]) -> dict[str, torch.Tensor]:
         dt[j, :n] = r["dt"]
         loss_mask[j, :n] = r["loss_mask"]
     out = dict(tokens=tokens, ages=ages, values=values, has_value=has_value, next_target=next_target, dt=dt, loss_mask=loss_mask)
+    if all("next_set" in r for r in rows):  # every target of the next target time, -1 padded
+        k = max(r["next_set"].shape[1] for r in rows)
+        next_set = np.full((batch, length, k), -1, dtype=np.int64)
+        for j, r in enumerate(rows):
+            next_set[j, :len(r["next_set"]), :r["next_set"].shape[1]] = r["next_set"]
+        out["next_set"] = next_set
     if any("text" in r for r in rows):
         # flat word ids, where each text event's words start, and that event's position in [batch * length]
         ids, starts, pos = [], [], []

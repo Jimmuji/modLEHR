@@ -82,6 +82,7 @@ that matches it, and every condition listed in a rule must hold.
 | `exclude_regex` | none | Codes matching this regular expression are left out of the rule |
 | `thin_years` | none | Keep each subject's first event of each code in every window of this many years. For measurements, context events (medications, procedures) and categorical answers; frequent events such as ICU vital signs or repeated drug administrations otherwise dominate the sequence |
 | `first_occurrence` | true for targets, false otherwise | Keep only each subject's first event of each token |
+| `follow_up` | true | Whether events of this rule extend the subject's follow-up. Follow-up ends at the last such event, and no later than death; it decides censoring in training and who counts as a control in evaluation. Set false for events recorded where the targets are not, such as outpatient measurements when diagnoses come only from admissions: they stay inputs, but a reading after the last admission must not turn a censored subject into a control |
 
 | Role | What it is | How it is tokenized |
 |---|---|---|

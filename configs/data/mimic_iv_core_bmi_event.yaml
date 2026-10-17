@@ -13,4 +13,6 @@ data:
     - {name: diagnoses, role: target, prefix: "DIAGNOSIS//ICD//"}
     - {name: admissions, role: context, prefix: "HOSPITAL_ADMISSION//"}
     - {name: emergency, role: context, codes: ["ED_REGISTRATION"]}
-    - {name: bmi, role: measurement, codes: ["BMI (kg/m2)"], thin_years: 1}
+    # an outpatient reading is an input, not follow-up: diagnoses are recorded only at admissions, so a
+    # reading after the last admission must not make a subject a control (follow_up: false)
+    - {name: bmi, role: measurement, codes: ["BMI (kg/m2)"], thin_years: 1, follow_up: false}

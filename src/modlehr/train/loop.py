@@ -126,6 +126,8 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
         torch.set_rng_state(state["torch_rng"].cpu())
         if device.type == "cuda" and state.get("cuda_rng") is not None:
             torch.cuda.set_rng_state(state["cuda_rng"].cpu())
+        if device.type == "mps" and state.get("mps_rng") is not None:  # dropout on an Apple GPU
+            torch.mps.set_rng_state(state["mps_rng"].cpu())
         best, first_step = state["best_tune_loss"], state["step"] + 1
         log(f"[train] resuming after step {state['step']} (best tuning loss so far {best:.4f})")
 
@@ -168,7 +170,8 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
                     torch.save(weights, out_dir / "best.pt")
                 torch.save({**weights, "optimizer": opt.state_dict(), "best_tune_loss": best,
                             "numpy_rng": rng.bit_generator.state, "torch_rng": torch.get_rng_state(),
-                            "cuda_rng": torch.cuda.get_rng_state() if device.type == "cuda" else None},
+                            "cuda_rng": torch.cuda.get_rng_state() if device.type == "cuda" else None,
+                            "mps_rng": torch.mps.get_rng_state() if device.type == "mps" else None},
                            out_dir / "last.pt")
             if stopping and not last:
                 log(f"[train] stopped after step {step}; continue with --resume")

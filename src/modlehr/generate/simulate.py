@@ -43,10 +43,10 @@ def simulate(cfg: Config, checkpoint: str | Path, start_age: float, n_subjects: 
     model, vocab = load_model(checkpoint, prepared, device)
     split = open_split(prepared, cfg.evaluate.split)
     ages, offsets = split.arrays["ages"], split.offsets
-    first_age, last_age = np.asarray(ages[offsets[:-1]]), np.asarray(ages[offsets[1:] - 1])
+    first_age, last_age = np.asarray(ages[offsets[:-1]]), split.follow_up_end  # follow-up, not the last event
     eligible = np.flatnonzero((first_age <= start_age) & (last_age > start_age))
     if not len(eligible):
-        raise ValueError(f"no {cfg.evaluate.split} patient has a record covering age {start_age:g}")
+        raise ValueError(f"no {cfg.evaluate.split} patient is followed at age {start_age:g}")
     rng = np.random.default_rng(seed)
     chosen = np.sort(rng.choice(eligible, min(n_subjects, len(eligible)), replace=False))
     death = vocab.token_index.get("MEDS_DEATH")
@@ -56,12 +56,12 @@ def simulate(cfg: Config, checkpoint: str | Path, start_age: float, n_subjects: 
     obs_by_target, sim_by_target = np.zeros(len(vocab.targets), int), np.zeros(len(vocab.targets), int)
     band_of = lambda age: min(int((age - bands[0]) // BAND), len(bands) - 1)  # noqa: E731
 
-    log(f"[simulate] {len(chosen):,} of {len(eligible):,} {cfg.evaluate.split} patients in the record at age {start_age:g}")
+    log(f"[simulate] {len(chosen):,} of {len(eligible):,} {cfg.evaluate.split} patients followed at age {start_age:g}")
     for j, i in enumerate(chosen):
         h = split.subject(int(i))
         end = float(last_age[i])
         target = vocab.input_to_target[h["tokens"]]
-        later = (target >= 0) & (h["ages"] > start_age)
+        later = (target >= 0) & (h["ages"] > start_age) & (h["ages"] <= end)
         for age, k in zip(h["ages"][later], target[later]):
             tally["obs_events"][band_of(age)] += 1
             obs_by_target[k] += 1

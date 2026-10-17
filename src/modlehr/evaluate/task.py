@@ -64,11 +64,16 @@ def landmark_task(split: PreparedSplit, vocab: Vocabulary, landmark: float, hori
     if controls not in CONTROLS:
         raise ValueError(f"evaluate.controls must be one of {CONTROLS}, got {controls!r}")
     ages, offsets = split.arrays["ages"], split.offsets
-    start, end = ages[offsets[:-1]], ages[offsets[1:] - 1]
+    start, end = np.asarray(ages)[offsets[:-1]], split.follow_up_end  # end of follow-up, not of the record
     subjects = np.flatnonzero((start <= landmark) & (end > landmark))
     if first is None:
-        first = first_target_ages(split.arrays["tokens"], ages, offsets, vocab)
+        first = split_first_ages(split, vocab)
     return LandmarkTask(landmark, horizon, subjects, first[subjects], end[subjects], controls)
+
+
+def split_first_ages(split: PreparedSplit, vocab: Vocabulary) -> np.ndarray:
+    """first_target_ages of a split, counting only targets within each subject's follow-up."""
+    return first_target_ages(split.arrays["tokens"], split.arrays["ages"], split.offsets, vocab, split.follow_up_end)
 
 
 def history_before(split: PreparedSplit, i: int, landmark: float, max_len: int | None = None) -> dict[str, np.ndarray]:

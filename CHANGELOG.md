@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+Fixes from an external code review (all six of its hypotheses held up)
+- Targets recorded at the same time are all labels of that time. Before, only the first (in token
+  order) was, so on MIMIC-IV, where every diagnosis of an admission is timed at its discharge,
+  85% of first diagnoses never supervised the model, and a death tied with diagnoses never did.
+  The loss is now -sum over the tied targets of log lambda_k + Lambda dt. Needs retraining
+- Follow-up ends at the last event of a rule with `follow_up: true` (all by default) and no later
+  than death. A later outpatient BMI no longer turns a censored subject into a control: the BMI
+  runs had 6.8% more controls than the diagnoses-only runs they were compared with. Events after
+  follow-up carry no loss. Needs re-preparing and retraining
+- Calibration weights observed outcomes by the inverse probability of still being followed
+  (Kaplan-Meier of the censoring times) instead of dropping censored subjects, which read 0.82 for
+  perfect predictions under heavy censoring
+- `modlehr compare` adds a 95% interval over seeds; the interval over pairs leaves out seed-to-seed
+  variation and was too narrow to decide between models
+- `--resume` on an Apple GPU restores its random state too
+
+
 Results
 - MIMIC-IV diagnoses, ten architectures over three seeds on the Alliance cluster Fir: every
   transformer beats logistic regression by about 0.012 AUC; no architecture moves AUC by more than

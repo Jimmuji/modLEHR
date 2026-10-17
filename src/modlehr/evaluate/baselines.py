@@ -43,9 +43,8 @@ from scipy import sparse
 from sklearn.metrics import roc_auc_score
 
 from modlehr.config import Config
-from modlehr.evaluate.task import LandmarkTask, history_before, landmark_task, summarize
+from modlehr.evaluate.task import LandmarkTask, history_before, landmark_task, split_first_ages, summarize
 from modlehr.prepare.dataset import PreparedSplit, open_split
-from modlehr.prepare.timeline import first_target_ages
 from modlehr.prepare.vocabulary import Vocabulary
 from modlehr.track import Tracker
 
@@ -98,8 +97,7 @@ def run_baselines(cfg: Config, models: tuple[str, ...] = MODELS, max_dense_featu
     with_values = meta["data_config"]["value_mode"] == "continuous"
     train_split = open_split(prepared, meds.train_split)
     eval_split = open_split(prepared, cfg.evaluate.split)
-    first_train = first_target_ages(train_split.arrays["tokens"], train_split.arrays["ages"], train_split.offsets, vocab)
-    first_eval = first_target_ages(eval_split.arrays["tokens"], eval_split.arrays["ages"], eval_split.offsets, vocab)
+    first_train, first_eval = split_first_ages(train_split, vocab), split_first_ages(eval_split, vocab)
     H, min_cases, n_tokens = cfg.evaluate.horizon_years, cfg.evaluate.min_cases, len(vocab.tokens)
     log(f"[baseline] {', '.join(models)} on {n_tokens:,} token features"
         f"{' plus their latest values' if with_values else ''}, {len(vocab.targets):,} targets")

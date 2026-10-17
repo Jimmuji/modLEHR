@@ -177,10 +177,37 @@ def test_calibration_window_starts_at_the_landmark():
                     "dt": self.dt[a + start:a + n]}
 
     # landmark 50, horizon 2: subject 0 has the target at 51 (a case), subject 1 at 55 (none within the
-    # window), subject 2's record ends at 51 without one (censored, left out)
+    # window), subject 2's follow-up ends at 51 without one (censored: weight 0, and subject 1, still
+    # followed at 52, stands in for it with weight 1 / (2/3))
     summary, _ = calibration(Split(), np.arange(3), 50.0, 2.0, np.full((3, 1), 0.25))
-    assert summary["subjects"] == 2 and summary["observed_any"] == 1
-    assert summary["expected_any"] == 0.5
+    assert summary["subjects"] == 3 and summary["followed_to_horizon"] == 2
+    assert summary["observed_any"] == 1.0 and summary["expected_any"] == 0.75
+
+
+def test_calibration_is_unbiased_under_censoring():
+    """Perfect predictions (risk 0.5 within the horizon) with heavy independent censoring: dropping the
+    censored subjects would read 0.82; the censoring weights read 1."""
+    from modlehr.evaluate.run import calibration
+
+    rng = np.random.default_rng(0)
+    n, landmark, horizon = 20000, 50.0, 2.0
+    gap = rng.exponential(horizon / np.log(2), n)  # P(target within the horizon) = 0.5
+    cens = rng.uniform(0, 4, n)
+    hit = gap <= cens
+    time = np.where(hit, gap, cens)
+
+    class Split:  # each subject: sex at age 0, then the target or the end of follow-up
+        offsets = np.arange(0, 2 * n + 1, 2)
+        arrays = {"ages": np.ravel(np.column_stack([np.zeros(n), landmark + time])).astype(np.float32)}
+
+        def subject(self, i, start, stop):
+            ages = self.arrays["ages"][2 * i:2 * i + 2]
+            nt = np.array([0 if hit[i] else -1, -1])
+            dt = np.array([landmark + time[i], 0.0], np.float32)
+            return {"ages": ages[start:stop], "next_target": nt[start:stop], "dt": dt[start:stop]}
+
+    summary, _ = calibration(Split(), np.arange(n), landmark, horizon, np.full((n, 1), 0.5))
+    assert abs(summary["expected_over_observed"] - 1.0) < 0.03
 
 
 def test_wandb_tracking_with_a_stand_in(tiny_config, monkeypatch):

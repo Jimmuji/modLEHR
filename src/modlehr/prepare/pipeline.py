@@ -56,8 +56,9 @@ def tokenize(events: pd.DataFrame, cfg: DataConfig) -> pd.DataFrame:
     is_cat = (role == "categorical") & events["text_value"].notna()
     token[is_cat] = code[is_cat] + "//" + events.loc[is_cat, "text_value"].astype(str).str.strip()
 
+    follows = pd.Series(np.array([r.follow_up for r in rules])[events["rule"].to_numpy()], index=events.index)
     out = pd.DataFrame({"subject_id": events["subject_id"], "code": code, "token": token, "role": role,
-                        "rule": events["rule"], "age": events["age"],
+                        "rule": events["rule"], "age": events["age"], "follow_up": follows,
                         "value": events["numeric_value"].astype("float64").where(role == "measurement")})
     if (role == "text").any():
         out["text"] = events["text_value"].where(role == "text")

@@ -94,7 +94,7 @@ class ModLEHR(nn.Module):
 
     def loss(self, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, dict]:
         out = self(batch)
-        nll, parts = self.head.loss(out, batch["next_target"], batch["dt"], batch["loss_mask"])
+        nll, parts = self.head.loss(out, batch.get("next_set", batch["next_target"]), batch["dt"], batch["loss_mask"])
         aux = [mod.aux_weight * mod.aux_loss for mod in self.modules() if hasattr(mod, "aux_loss")]
         if aux and self.training:  # e.g. the load-balancing loss of a mixture of experts
             extra = torch.stack(aux).sum()

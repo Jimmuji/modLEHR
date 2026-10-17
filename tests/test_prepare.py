@@ -135,3 +135,61 @@ def test_controls_never_keeps_more_than_at_risk():
     assert list(case_a) == list(case_n) == [True, False, False, False]
     assert list(keep_a) == [True, True, False, False]   # censored never-haver dropped
     assert list(keep_n) == [True, True, True, False]    # kept as a control
+
+
+
+def test_tied_targets_all_label_their_time_and_follow_up_ends_at_death():
+    """Diagnoses recorded at one discharge are all labels of that time (not only the first), death
+    counts even when tied with diagnoses, follow-up ends at death, and events of a follow_up: false rule
+    (outpatient BMI) neither extend follow-up nor carry a loss after it."""
+    from modlehr.prepare.timeline import next_target_sets
+
+    vocab = Vocabulary.build(["GENDER//F", "BMI", "ADM"], ["D1", "D2", "D3", "MEDS_DEATH"])
+    t, k = vocab.token_index, vocab.input_to_target
+    rows = [("GENDER//F", 0.0, True), ("BMI", 40.0, False), ("D1", 50.0, True), ("D2", 50.0, True),
+            ("ADM", 50.0, True), ("D3", 60.0, True), ("MEDS_DEATH", 60.0, True), ("ADM", 61.0, True),
+            ("BMI", 62.0, False)]
+    frame = pd.DataFrame({"subject_id": 0, "token_id": [t[r[0]] for r in rows], "age": [r[1] for r in rows],
+                          "value": np.nan, "follow_up": [r[2] for r in rows]})
+    a = build_split(frame, vocab)
+    assert a["follow_up_end"][0] == 60.0  # the admission at 61 comes after death
+    sets = next_target_sets(a["ages"], a["target"], 60.0, 0, len(rows))
+    as_set = lambda r: set(r[r >= 0].tolist())  # noqa: E731
+    assert as_set(sets[0]) == {k[t["D1"]], k[t["D2"]]}  # from age 0: both diagnoses at 50
+    assert as_set(sets[4]) == {k[t["D3"]], k[t["MEDS_DEATH"]]}  # from 50: the diagnosis and death at 60
+    assert as_set(sets[6]) == set() and as_set(sets[8]) == set()  # after the last target: censored
+    assert list(a["loss_mask"]) == [True, True, False, False, True, False, True, False, False]
+
+
+def test_outpatient_events_do_not_turn_censored_subjects_into_controls(tmp_path):
+    """At landmark 50 with a 2-year horizon, a subject last admitted at 51 is censored, also when an
+    outpatient BMI at 58 follows: BMI is an input, not follow-up."""
+    from modlehr.evaluate.task import landmark_task
+    from modlehr.prepare.dataset import SplitWriter
+
+    vocab = Vocabulary.build(["GENDER//F", "BMI", "ADM"], ["D1"])
+    t = vocab.token_index
+    for follows, expect_control in ((False, False), (True, True)):
+        frame = pd.DataFrame({"subject_id": 0, "token_id": [t["GENDER//F"], t["ADM"], t["BMI"]],
+                              "age": [0.0, 51.0, 58.0], "value": np.nan, "follow_up": [True, True, follows]})
+        writer = SplitWriter(tmp_path / f"split_{follows}")
+        writer.append(build_split(frame, vocab))
+        writer.close()
+        task = landmark_task(open_split(tmp_path, f"split_{follows}"), vocab, 50.0, 2.0)
+        keep, case = task.labels(0)
+        assert bool(keep[0]) == expect_control and not case[0]
+
+
+def test_loss_counts_every_tied_target():
+    import torch
+
+    from modlehr.model.heads import CompetingRiskHead
+
+    log_rates = torch.log(torch.tensor([[[0.1, 0.2, 0.3]]]))
+    dt = torch.tensor([[2.0]])
+    mask = torch.tensor([[True]])
+    nll, _ = CompetingRiskHead.loss(log_rates, torch.tensor([[[0, 2, -1]]]), dt, mask)
+    expected = -(np.log(0.1) + np.log(0.3)) + 0.6 * 2.0
+    assert abs(float(nll) - expected) < 1e-5
+    single, _ = CompetingRiskHead.loss(log_rates, torch.tensor([[1]]), dt, mask)  # one target, as before
+    assert abs(float(single) - (-np.log(0.2) + 1.2)) < 1e-5
