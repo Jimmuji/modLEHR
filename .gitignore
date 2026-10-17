@@ -6,3 +6,5 @@ __pycache__/
 /data/
 /runs/
 .DS_Store
+/logs/
+/*.out
