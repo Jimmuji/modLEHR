@@ -85,6 +85,9 @@ class ModLEHR(nn.Module):
         text = (batch["text_ids"], batch["text_offsets"], batch["text_pos"]) if "text_pos" in batch else None
         x = self.input_head(tokens, batch["ages"], batch["values"], batch["has_value"], extra, text)
         mask = attention_mask(tokens)
+        for mod in self.modules():  # parts with an auxiliary loss compute it over real events, not padding
+            if hasattr(mod, "aux_loss"):
+                mod.valid = (tokens != 0).reshape(-1)
         for block in self.blocks:
             x = block(x, mask, batch["ages"])
         return self.head(self.norm(x))

@@ -163,3 +163,38 @@ def test_moe_dense_and_sparse_dispatch_agree():
         results.append((y.detach(), {n: p.grad for n, p in m.named_parameters()}))
     assert torch.allclose(results[0][0], results[1][0], atol=1e-12)
     assert all(torch.allclose(results[0][1][n], results[1][1][n], atol=1e-12) for n in results[0][1])
+
+
+def test_padding_changes_no_prediction():
+    """A row's outputs are the same whether its batch is padded to 64 or, next to a longer row, to 128."""
+    import numpy as np
+
+    from modlehr.prepare.dataset import collate
+
+    def row(n, seed):
+        r = np.random.default_rng(seed)
+        return {"tokens": r.integers(1, 20, n), "ages": np.sort(r.uniform(0, 80, n)).astype(np.float32),
+                "values": np.full(n, np.nan, np.float32), "next_target": np.full(n, -1), "dt": np.zeros(n, np.float32),
+                "loss_mask": np.zeros(n, bool)}
+
+    torch.manual_seed(0)
+    model = ModLEHR(ModelConfig(d_model=32, n_layers=2, n_heads=2, dropout=0.0, max_len=256), n_tokens=20,
+                    n_targets=5).eval()
+    short, long = row(5, 0), row(100, 1)
+    alone, beside = collate([short]), collate([short, long])
+    assert alone["tokens"].shape[1] == 64 and beside["tokens"].shape[1] == 128
+    with torch.no_grad():
+        assert torch.allclose(model(alone)[0, :5], model(beside)[0, :5], atol=1e-5)
+
+
+def test_moe_balancing_ignores_padding():
+    from modlehr.model.layers import MixtureOfExperts
+
+    torch.manual_seed(0)
+    moe = MixtureOfExperts(16, n_experts=4, top_k=2)
+    x = torch.randn(1, 6, 16)
+    moe(x)
+    real_only = moe.aux_loss.clone()
+    moe.valid = torch.tensor([True] * 6 + [False] * 4)  # the same 6 events and 4 padding positions
+    moe(torch.cat([x, torch.randn(1, 4, 16)], dim=1))
+    assert torch.allclose(moe.aux_loss, real_only)

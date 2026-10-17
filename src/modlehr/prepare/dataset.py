@@ -146,9 +146,18 @@ class SplitWriter:
         np.save(self.out_dir / "note_offsets.npy", np.asarray(new_offsets, dtype=np.int64))
 
 
+PAD_TO = 64
+
+
 def collate(rows: list[dict]) -> dict[str, torch.Tensor]:
-    """Right-pad to the longest row. Padding has token 0 and no loss."""
-    length = max(len(r["tokens"]) for r in rows)
+    """Right-pad to the longest row, rounded up to a multiple of PAD_TO. Padding has token 0 and no loss.
+
+    Rounding keeps the number of distinct batch shapes small. On an Apple GPU some operations keep a
+    compiled graph for every shape they meet, and the mixture-of-experts model, whose router uses
+    them, grew past the machine's memory when every batch had its own length. Padding comes after
+    a row's events, which attend only backwards, so it changes no prediction.
+    """
+    length = -(-max(len(r["tokens"]) for r in rows) // PAD_TO) * PAD_TO
     batch = len(rows)
     tokens = np.zeros((batch, length), dtype=np.int64)
     ages = np.zeros((batch, length), dtype=np.float32)

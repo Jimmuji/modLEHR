@@ -24,6 +24,12 @@ Shapes: `x` is `[B, T, d_model]`; `ages` is `[B, T]` in years; `mask` is `[B, 1,
 where a query may attend (causal, and the key is not padding); `values` is `[B, T]`, already
 scaled; `has_value` is `[B, T]` boolean.
 
+A part may also define `aux_loss` and `aux_weight` (the mixture of experts does, for its
+load-balancing loss): the model adds `aux_weight * aux_loss` to the training loss, and before each
+forward pass sets the part's `valid` attribute to the padding mask, flattened to `[B * T]`, so the
+loss can leave padding out. Batches are padded to a multiple of 64 events (`PAD_TO` in
+`modlehr/prepare/dataset.py`), so most positions in a batch of short timelines are padding.
+
 The registering module has to be imported before the config is read.
 `modlehr/model/model.py` imports `encodings`, `heads` and `layers`, and
 `modlehr/prepare/pipeline.py` imports `grouping`; a new module goes in the same import line.

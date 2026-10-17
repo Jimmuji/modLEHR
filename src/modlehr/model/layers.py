@@ -187,7 +187,8 @@ class MixtureOfExperts(nn.Module):
 
     Without pressure the router tends to use few experts, so it records a load-balancing loss
     (Switch Transformer: n_experts * sum over experts of the share of events routed there times the
-    mean router probability), which the model adds to the training loss times aux_weight.
+    mean router probability), which the model adds to the training loss times aux_weight. Both are
+    taken over real events: the model sets `valid` to its padding mask before each forward pass.
 
     dispatch "dense" (default) runs every expert on every event and weights each by the router,
     zero for the experts an event is not routed to: the same outputs and gradients as "sparse", at
@@ -224,7 +225,11 @@ class MixtureOfExperts(nn.Module):
                 rows, slot = (chosen == e).nonzero(as_tuple=True)
                 if len(rows):
                     out.index_add_(0, rows, expert(flat[rows]) * weight[rows, slot].unsqueeze(-1))
-        share = torch.zeros(self.n_experts, device=x.device).index_add_(
-            0, chosen.reshape(-1), torch.ones(chosen.numel(), device=x.device)) / chosen.numel()
-        self.aux_loss = self.n_experts * (share * probs.mean(dim=0)).sum()
+        # over real events only: the model sets self.valid to its padding mask
+        valid = getattr(self, "valid", None)
+        v = (valid.to(probs.dtype) if valid is not None and valid.numel() == len(flat)
+             else torch.ones(len(flat), dtype=probs.dtype, device=x.device)).unsqueeze(-1)
+        n = v.sum().clamp(min=1)
+        share = (F.one_hot(chosen, self.n_experts).to(probs.dtype).sum(dim=1) * v).sum(dim=0) / (n * self.top_k)
+        self.aux_loss = self.n_experts * (share * (probs * v).sum(dim=0) / n).sum()
         return out.reshape(shape)

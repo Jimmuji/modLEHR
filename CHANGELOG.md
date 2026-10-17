@@ -20,6 +20,13 @@ Data
   `prepare.json` records a fingerprint of the files (path, size, modification time)
 
 Models
+- Batches are padded to a multiple of 64 events, so a model sees at most a few batch shapes. With
+  every batch its own length, the mixture of experts grew without bound on an Apple GPU (some
+  operations keep a compiled graph per shape); with it, a MIMIC-IV MoE run levels off at 19 GB.
+  Padding follows a row's events, so no prediction changes (tested); training differs only in the
+  dropout masks drawn, and is the same to float precision with dropout off. About 10% slower
+- The mixture of experts takes its load-balancing loss over real events; it used to count padding,
+  most of a batch on MIMIC-IV
 - `moe` computes every expert and weights the ones not chosen by zero (`dispatch: dense`, the
   default): the same outputs and gradients with fixed tensor shapes. Dispatching events to their
   experts (`dispatch: sparse`) changes shapes every step, and on an Apple GPU the memory cache grew
