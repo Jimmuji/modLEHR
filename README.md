@@ -286,9 +286,10 @@ numbers, so it is written into `evaluate.json` and printed with the mean, and `m
 reads the same setting.
 
 **Calibration.** At each landmark, the head's probability that the next outcome is k and comes
-within the horizon is compared with what came next in the record; patients whose record ends
-sooner with no outcome are left out. Reported as expected over observed outcomes (1 is calibrated),
-and as predicted against observed by risk bin in `evaluate_calibration.csv`.
+in (L, L + H] is compared with what came next in the record; patients whose record ends before
+L + H with no outcome are left out. The window starts at L even when the last event is years
+earlier, since nothing happened in between. Reported as expected over observed outcomes (1 is
+calibrated), and as predicted against observed by risk bin in `evaluate_calibration.csv`.
 
 **Likelihood.** The mean negative log-likelihood per prediction on the held-out patients,
 split into an event part (which target comes next) and a time part (how long until it). AUC
@@ -486,9 +487,9 @@ How to read it:
 - **The classical models beat every transformer.** At 3,000 steps the transformers are
   undertrained, so architecture comparisons should wait until the baseline at least matches the
   logistic regression.
-- **Rates are off in ways AUC does not show.** The plain GPT predicts 17% more next outcomes than
-  occur (expected over observed 1.17), and simulated futures from age 50 hold 0.67 of the observed
-  outcomes per person-year, with too many deaths.
+- **Simulated futures miss outcomes, which AUC does not show.** The number of next outcomes is
+  close to right (expected over observed 0.94 to 0.98 over the three seeds), but futures sampled
+  from age 50 hold 0.67 of the observed outcomes per person-year, with too many deaths.
 - **Synthea limits what can be learned.** It generates diseases from a small number of rules, so
   the signal it holds is limited. It is the place to check that the pipeline runs, not where an
   architecture should be judged; model comparisons belong on real records (MIMIC-IV).
