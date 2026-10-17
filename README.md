@@ -428,7 +428,7 @@ Every part is registered by name and picked in `configs/model/`:
 |---|---|---|
 | `attention` | `mha`, `gqa`, `rope`, `rope_age`, `alibi_age`, `mla`, `local_age` | multi-head (GPT-2); grouped-query (Llama, Qwen); rotary over event order; rotary over age; ALiBi over age (BLOOM, MPT use it over positions); multi-head latent attention, keys and values from a low-rank latent (DeepSeek-V2, V3); a sliding window over the last N years (Mistral and Gemma slide over positions). Any of them takes `qk_norm: true`, query and key normalization (OLMo 2, Gemma 3, Qwen3) |
 | `norm` | `layernorm`, `rmsnorm` | |
-| `ffn` | `gelu_mlp`, `swiglu`, `moe` | GELU MLP (GPT-2); gated SwiGLU (Llama); mixture of experts, each event routed to 2 of 4 SwiGLU experts with a load-balancing loss (Mixtral, DeepSeek, Qwen3-MoE). With the defaults an event passes through as many weights as the GELU MLP; the experts add capacity, not compute |
+| `ffn` | `gelu_mlp`, `swiglu`, `moe` | GELU MLP (GPT-2); gated SwiGLU (Llama); mixture of experts, each event routed to 2 of 4 SwiGLU experts with a load-balancing loss (Mixtral, DeepSeek, Qwen3-MoE). With the defaults an event passes through as many weights as the GELU MLP. All experts are computed and the ones not chosen weighted zero (`dispatch: dense`, the same result with fixed tensor shapes), so training costs about twice the MLP's compute; `dispatch: sparse` computes only the chosen ones |
 | `time_encoding` | `sinusoidal_age`, `none` | |
 | `value_encoding` | `none`, `mlp` | `mlp` reads values kept with `value_mode: continuous` |
 | `text_encoding` | `none`, `hashed_bag` | `hashed_bag` averages learned embeddings of a note's words, hashed into 65,536 buckets with no external tokenizer |

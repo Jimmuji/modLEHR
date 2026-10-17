@@ -145,6 +145,7 @@ the `description_regex` keeps only disorders as targets.
 | `top_k` | `2` | Experts each event is routed to |
 | `mult` | `4/3` | Expert hidden width as a multiple of `d_model`; with `top_k: 2` the active width matches the GELU MLP |
 | `aux_weight` | `0.01` | Weight of the load-balancing loss added during training |
+| `dispatch` | `dense` | `dense` computes every expert on every event and weights the ones not chosen by zero: the same outputs and gradients as `sparse`, which computes only the chosen ones, with tensor shapes that never change. On an Apple GPU `sparse` grew a MIMIC-IV run past the machine's memory; it is the one to use with many experts on CUDA |
 
 `gelu_mlp` and `swiglu` take `mult` too (4 and 8/3 by default).
 

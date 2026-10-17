@@ -188,16 +188,25 @@ class MixtureOfExperts(nn.Module):
     Without pressure the router tends to use few experts, so it records a load-balancing loss
     (Switch Transformer: n_experts * sum over experts of the share of events routed there times the
     mean router probability), which the model adds to the training loss times aux_weight.
+
+    dispatch "dense" (default) runs every expert on every event and weights each by the router,
+    zero for the experts an event is not routed to: the same outputs and gradients as "sparse", at
+    n_experts / top_k times the feed-forward compute, with tensor shapes that never change. "sparse"
+    gives each expert only its own events, a different number every step; on an Apple GPU the memory
+    cache kept a buffer for every new size, and a MIMIC-IV run grew to 47 GB on a 24 GB machine and
+    stalled. Use "sparse" for many experts on CUDA.
     """
 
     def __init__(self, d_model: int, dropout: float = 0.0, n_experts: int = 4, top_k: int = 2,
-                 mult: float = 4 / 3, aux_weight: float = 0.01):
+                 mult: float = 4 / 3, aux_weight: float = 0.01, dispatch: str = "dense"):
         super().__init__()
         if not 1 <= top_k <= n_experts:
             raise ValueError("need 1 <= top_k <= n_experts")
+        if dispatch not in ("dense", "sparse"):
+            raise ValueError(f"dispatch must be dense or sparse, not {dispatch!r}")
         self.router = nn.Linear(d_model, n_experts, bias=False)
         self.experts = nn.ModuleList(SwiGLU(d_model, dropout, mult=mult) for _ in range(n_experts))
-        self.n_experts, self.top_k, self.aux_weight = n_experts, top_k, aux_weight
+        self.n_experts, self.top_k, self.aux_weight, self.dispatch = n_experts, top_k, aux_weight, dispatch
         self.aux_loss = torch.zeros(())
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -206,11 +215,15 @@ class MixtureOfExperts(nn.Module):
         probs = torch.softmax(self.router(flat), dim=-1)
         weight, chosen = probs.topk(self.top_k, dim=-1)
         weight = weight / weight.sum(dim=-1, keepdim=True)
-        out = torch.zeros_like(flat)
-        for e, expert in enumerate(self.experts):
-            rows, slot = (chosen == e).nonzero(as_tuple=True)
-            if len(rows):
-                out.index_add_(0, rows, expert(flat[rows]) * weight[rows, slot].unsqueeze(-1))
+        if self.dispatch == "dense":
+            gates = torch.zeros_like(probs).scatter(1, chosen, weight)  # [events, n_experts]
+            out = sum(expert(flat) * gates[:, e:e + 1] for e, expert in enumerate(self.experts))
+        else:
+            out = torch.zeros_like(flat)
+            for e, expert in enumerate(self.experts):
+                rows, slot = (chosen == e).nonzero(as_tuple=True)
+                if len(rows):
+                    out.index_add_(0, rows, expert(flat[rows]) * weight[rows, slot].unsqueeze(-1))
         share = torch.zeros(self.n_experts, device=x.device).index_add_(
             0, chosen.reshape(-1), torch.ones(chosen.numel(), device=x.device)) / chosen.numel()
         self.aux_loss = self.n_experts * (share * probs.mean(dim=0)).sum()

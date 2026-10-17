@@ -144,3 +144,22 @@ def test_local_age_ignores_events_outside_the_window():
     out_x, out_y = m(x), m(y)
     assert torch.allclose(out_x[0, -1], out_y[0, -1], atol=1e-5)
     assert not torch.allclose(out_x[0, 1], out_y[0, 1], atol=1e-5)  # but an event at age 6.7 can
+
+
+def test_moe_dense_and_sparse_dispatch_agree():
+    """Running every expert and zeroing the unchosen ones gives the same outputs and gradients as
+    sending each event only to its chosen experts."""
+    from modlehr.model.layers import MixtureOfExperts
+
+    torch.manual_seed(0)
+    sparse = MixtureOfExperts(32, n_experts=4, top_k=2, dispatch="sparse").double()
+    dense = MixtureOfExperts(32, n_experts=4, top_k=2, dispatch="dense").double()
+    dense.load_state_dict(sparse.state_dict())
+    x = torch.randn(3, 10, 32, dtype=torch.float64)
+    results = []
+    for m in (sparse, dense):
+        y = m(x)
+        (y.square().mean() + m.aux_loss).backward()
+        results.append((y.detach(), {n: p.grad for n, p in m.named_parameters()}))
+    assert torch.allclose(results[0][0], results[1][0], atol=1e-12)
+    assert all(torch.allclose(results[0][1][n], results[1][1][n], atol=1e-12) for n in results[0][1])

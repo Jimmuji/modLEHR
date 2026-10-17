@@ -20,6 +20,10 @@ Data
   `prepare.json` records a fingerprint of the files (path, size, modification time)
 
 Models
+- `moe` computes every expert and weights the ones not chosen by zero (`dispatch: dense`, the
+  default): the same outputs and gradients with fixed tensor shapes. Dispatching events to their
+  experts (`dispatch: sparse`) changes shapes every step, and on an Apple GPU the memory cache grew
+  a MIMIC-IV run to 47 GB and stalled it; dense runs at 160 ms per step and holds 11 to 13 GB
 - The variant files in `configs/model/` list only the part they swap, so they layer onto a model of
   any size. Before, each one pulled in `gpt_baseline.yaml` and reset the width to 128. `gpt_gqa`
   and `gpt_mla` take their sizes from the model (half the query heads; a latent of `d_model` / 4),
