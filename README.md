@@ -518,8 +518,10 @@ chartevents among them. `modlehr convert mimic-iv-core` reads the three tables t
 (`hosp/patients.csv.gz`, `hosp/admissions.csv.gz`, `hosp/diagnoses_icd.csv.gz`, 56 MB) and
 writes the same code families, so `configs/data/mimic_iv_core.yaml` is `mimic_iv.yaml` with the
 measurement rules removed. This is the Delphi-2M data shape on MIMIC: sex, disease codes, death,
-and the hospital contacts that time them. `scripts/run_mimic_iv_core.sh` runs it end to end and
-evaluates under both control conventions:
+and the hospital contacts that time them. Targets are ICD-10 categories, with ICD-9 codes mapped
+through the CMS GEMs (`icd_gems`, 1,018 targets), which `scripts/fetch_code_maps.sh` downloads; see
+[docs/disease_codes.md](docs/disease_codes.md). `scripts/run_mimic_iv_core.sh` runs it end to end
+and evaluates under both control conventions:
 
 ```bash
 RAW=~/mimic_dl/physionet.org/files/mimiciv/3.1 scripts/run_mimic_iv_core.sh
@@ -587,7 +589,8 @@ src/modlehr/
   cli.py           the commands
 scripts/           compare_synthea.sh: every Synthea variant over three seeds; run_mimic_iv.sh: full MIMIC-IV;
                    run_mimic_iv_core.sh: MIMIC-IV diagnoses only; compare_mimic_iv_core.sh: every variant
-                   on it over three seeds; fetch_mimic_iv.sh: resume the raw download
+                   on it over three seeds; fetch_mimic_iv.sh: resume the raw download;
+                   fetch_code_maps.sh: the public GEMs and phecode maps
 tests/             unit tests and end-to-end tests on a tiny synthetic MEDS dataset
 docs/              design notes, configuration reference, extension guide, disease codes
 ```
@@ -616,8 +619,8 @@ it with the MEDS tools rather than narrowing the event rules.
 
 ## Roadmap
 
-- Results on MIMIC-IV with `icd_gems` and `phecode` targets, against `icd_3char`
-- Every architecture compared over several seeds, on MIMIC-IV
+- Results on MIMIC-IV with `phecode` and `icd_3char` targets, against `icd_gems`
+- Every architecture compared over several seeds, on MIMIC-IV (running: `scripts/compare_mimic_iv_core.sh`)
 - A pretrained clinical language model as a text encoding, next to `hashed_bag`
 - Prediction tasks in the MEDS-DEV label format, for comparison with other MEDS models
 

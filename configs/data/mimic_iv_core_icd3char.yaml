@@ -1,0 +1,6 @@
+# MIMIC-IV diagnoses with ICD-9 and ICD-10 categories kept apart: each disease coded in both eras is
+# two targets. The comparison point for mimic_iv_core.yaml, which merges the eras through the GEMs.
+defaults: [mimic_iv_core.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_core_icd3char
+  target_grouping: icd_3char

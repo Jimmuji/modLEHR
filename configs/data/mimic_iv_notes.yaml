@@ -11,7 +11,8 @@ data:
   meds_dir: data/mimic_iv_meds_notes
   prepared_dir: runs/prepared/mimic_iv_notes
   text_max_words: 256           # the first 256 words of each note
-  target_grouping: icd_3char         # ICD-9 and ICD-10 diagnoses to three-character categories
+  target_grouping: icd_gems          # ICD-10 three-character categories, ICD-9 mapped through the CMS GEMs
+  target_grouping_options: {gems_path: data/maps/gems/2018_I9gem.txt}   # scripts/fetch_code_maps.sh
   min_subjects_per_token: 100        # a larger cohort can afford a stricter filter; caps the target set too
   value_mode: binned                 # plain GPT baseline: each result becomes code//Q1..Q3
   n_bins: 3

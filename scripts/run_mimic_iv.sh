@@ -29,10 +29,9 @@ for f in hosp/patients.csv.gz hosp/admissions.csv.gz hosp/diagnoses_icd.csv.gz h
 done
 if [ "$missing" = 1 ]; then
   cat <<'MSG'
-The raw MIMIC-IV download is incomplete. Resume it with your PhysioNet account (wget asks for the
-password and skips files that are already complete):
-  cd ~/mimic_dl && wget -r -N -c -np --user YOUR_PHYSIONET_USERNAME --ask-password https://physionet.org/files/mimiciv/3.1/
-Or let the ETL download and verify the files itself (see the MIMIC_IV_MEDS README).
+The raw MIMIC-IV download is incomplete. Resume it with your PhysioNet account (the script asks
+for the username and password, skips complete files and checks every file's SHA256):
+  scripts/fetch_mimic_iv.sh
 MSG
   exit 1
 fi
@@ -45,6 +44,7 @@ if [ ! -f "$OUT/metadata/codes.parquet" ]; then
   PATH="$PWD/.venv-etl/bin:$PATH" meds-extract-run spec=MIMIC-IV output_dir="$PWD/$OUT" do_download=false input_dir="$RAW"
 fi
 
+scripts/fetch_code_maps.sh  # the GEMs file the icd_gems target grouping reads
 $M validate --meds-dir "$OUT"
 $M run --config configs/experiment/mimic_iv_gpt.yaml --seed 1 "$@"
 $M info --config configs/experiment/mimic_iv_gpt.yaml

@@ -13,7 +13,7 @@ chapters I to XVII, plus death). A source coded at full detail can give tens of 
 | ICD-10-CM (US) | ICD-10 extended to up to seven characters | About 74,000 codes (FY2025) | MIMIC-IV from October 2015 |
 | ICD-9-CM | Three-digit categories plus up to two decimals | About 14,000 codes | MIMIC-IV before October 2015 |
 | SNOMED CT | A polyhierarchy: concepts linked by "is a" relationships, a concept can have several parents, 19 top-level hierarchies | 360,000+ concepts | Synthea |
-| Phecodes | Groups of ICD codes built for EHR phenotype research, with public maps from ICD-9-CM, ICD-10-CM and ICD-10 | 1,866 groups (v1.2) | Optional grouping |
+| Phecodes | Groups of ICD codes built for EHR phenotype research, with public maps from ICD-9-CM, ICD-10-CM and ICD-10 | About 1,850 groups (v1.2) | Optional grouping |
 
 SNOMED CT is hierarchical, but not as a single tree with fixed levels, so "cut at the third
 level" is not defined the way it is for ICD-10. Official maps from SNOMED CT to ICD-10 exist
@@ -25,6 +25,7 @@ level" is not defined the way it is for ICD-10. Official maps from SNOMED CT to 
 |---|---|---|---|
 | Synthea (22,962 patients) | 919 SNOMED condition codes, 210 of them disorders | none needed | 163 diseases + death |
 | MIMIC-IV demo (100 patients) | 1,474 ICD codes (734 ICD-10, 740 ICD-9) | 704 three-character categories (379 ICD-10, 325 ICD-9) | 142 + death (at least 5 of 80 training patients) |
+| MIMIC-IV diagnoses (364,627 patients) | 28,583 ICD codes | `icd_gems`: 1,875 categories. `icd_3char`: 2,842 (ICD-9 and ICD-10 apart). `phecode`: 2,267 | `icd_gems`: 1,017 + death (970 ICD-10, 47 ICD-9 the GEMs cannot map). `icd_3char`: 1,397 + death. `phecode`: 1,360 + death (1,214 phecodes). At least 100 of 262,187 training patients |
 
 Synthea's disease set is small because its disease modules are, so the problem Jun raised does
 not show up there. It shows up on real data: even 100 MIMIC patients carry 1,474 distinct codes.
@@ -38,9 +39,11 @@ not show up there. It shows up on real data: even 100 MIMIC patients carry 1,474
    `icd_3char` truncates ICD-9 and ICD-10 separately, so the two eras of MIMIC-IV form two target
    families. `icd_gems` maps each ICD-9 code through the CMS General Equivalence Mappings (public)
    before truncating, so both eras land in one set; an ICD-9 code with several ICD-10 targets takes
-   the category most of them share, and codes the GEMs cannot map stay ICD-9 categories.
+   the category most of them share, and codes the GEMs cannot map stay ICD-9 categories. The MIMIC-IV
+   configs use `icd_gems`; `configs/data/mimic_iv_core_icd3char.yaml` keeps the eras apart for
+   comparison.
 3. **Phecodes**: `phecode` maps ICD-9-CM and ICD-10-CM through the PheWAS catalog maps (public) into
-   about 1,900 clinically meaningful groups, looking up ever shorter prefixes for codes more specific
+   about 1,850 clinically meaningful groups, looking up ever shorter prefixes for codes more specific
    than the map; unmapped codes are kept as ICD categories or dropped. To compare against ICD-10
    categories on MIMIC-IV.
 4. **SNOMED-coded sources: map to ICD-10** where a licensed map is available; otherwise group by
@@ -48,17 +51,31 @@ not show up there. It shows up on real data: even 100 MIMIC patients carry 1,474
 5. **The frequency filter** (`min_subjects_per_token`) drops outcomes too rare to learn and caps the
    target vocabulary on every source.
 
-The mapping files are not in the repository. Configure them like this:
+The mapping files are public but not in the repository. `scripts/fetch_code_maps.sh` downloads
+them into `data/maps/` and checks each against the hash of the copy the configs were made with:
+
+| File | Source | Contents |
+|---|---|---|
+| `data/maps/gems/2018_I9gem.txt` | CMS, 2018 ICD-10-CM General Equivalence Mappings | 24,860 ICD-9-CM → ICD-10-CM rows; 14,145 ICD-9 codes with a map |
+| `data/maps/phecode/Phecode_map_v1_2_icd9_icd10cm.csv` | PheWAS catalog, Phecode Map 1.2 (Combined) | 14,516 ICD-9-CM and 82,924 ICD-10-CM codes; a `Flag` column tells the versions apart |
+
+`configs/data/mimic_iv_core_gems.yaml` and `configs/data/mimic_iv_core_phecode.yaml` use them:
 
 ```yaml
 target_grouping: icd_gems
-target_grouping_options: {gems_path: maps/2018_I9gem.txt}
+target_grouping_options: {gems_path: data/maps/gems/2018_I9gem.txt}
 ```
 
 ```yaml
 target_grouping: phecode
 target_grouping_options:
-  icd9_map: maps/phecode_icd9_rolled.csv
-  icd10_map: maps/Phecode_map_v1_2_icd10cm_beta.csv
+  icd9_map: data/maps/phecode/Phecode_map_v1_2_icd9_icd10cm.csv   # the combined file serves both
+  icd10_map: data/maps/phecode/Phecode_map_v1_2_icd9_icd10cm.csv
   unmapped: keep
 ```
+
+Two things the combined phecode map needs care with. Eleven codes exist in both ICD versions with
+different meanings (ICD-9 E858 is a drug poisoning, ICD-10-CM E85.8 an amyloidosis), so each version
+reads only its own rows. And 7,821 ICD-10-CM codes are listed with more than one phecode (carbon
+monoxide poisoning, T58, under both a toxic-effect and a poisoning phecode); the loader takes the
+first one listed, since a target grouping gives each code one outcome.

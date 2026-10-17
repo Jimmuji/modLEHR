@@ -29,6 +29,7 @@ for f in hosp/patients.csv.gz hosp/admissions.csv.gz hosp/diagnoses_icd.csv.gz; 
 done
 [ "$missing" = 1 ] && { echo "Fetch the missing tables with PN_USER=... scripts/fetch_mimic_iv.sh"; exit 1; }
 
+scripts/fetch_code_maps.sh  # the GEMs file the icd_gems target grouping reads
 [ -f "$OUT/metadata/codes.parquet" ] || $M convert mimic-iv-core --raw-dir "$RAW" --out "$OUT"
 $M validate --meds-dir "$OUT"
 $M run --config $CONFIG --seed "$SEED" "$@"

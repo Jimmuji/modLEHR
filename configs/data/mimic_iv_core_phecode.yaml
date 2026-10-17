@@ -1,0 +1,12 @@
+# MIMIC-IV diagnoses as phecodes (PheWAS catalog v1.2), groups of ICD-9 and ICD-10-CM codes built for
+# EHR phenotype research; both coding eras share one target set. The combined map holds both
+# versions. Codes it does not cover stay ICD categories (unmapped: keep). scripts/fetch_code_maps.sh
+# downloads the map.
+defaults: [mimic_iv_core.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_core_phecode
+  target_grouping: phecode
+  target_grouping_options:
+    icd9_map: data/maps/phecode/Phecode_map_v1_2_icd9_icd10cm.csv
+    icd10_map: data/maps/phecode/Phecode_map_v1_2_icd9_icd10cm.csv
+    unmapped: keep

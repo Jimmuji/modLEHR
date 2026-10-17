@@ -108,32 +108,37 @@ training with the training-set count of each target and the total years of follo
 
 ### A new target grouping
 
-A grouping maps a MEDS code to the outcome the model predicts. Codes it does not recognize
-should come back unchanged.
+A grouping maps a MEDS code to the outcome the model predicts, or to `None` to leave the code out
+altogether. Codes it does not recognize should come back unchanged. A plain function takes no
+options; a class receives `data.target_grouping_options` as keyword arguments and is built once,
+so it can read a mapping file in `__init__` (`ICDWithGEMs` and `Phecode` in
+`modlehr/prepare/grouping.py` do).
 
 ```python
 # modlehr/prepare/grouping.py
-import csv
-from functools import cache
-from pathlib import Path
+@register("target_grouping", "icd_prefix")
+class ICDPrefix:
+    """ICD codes cut to their first `length` characters, each ICD version apart."""
 
-@cache
-def _phecode_map() -> dict[str, str]:
-    with open(Path(__file__).parent / "maps" / "icd10cm_to_phecode.csv") as f:
-        return {row["icd10cm"].replace(".", ""): row["phecode"] for row in csv.DictReader(f)}
+    def __init__(self, length: int = 3):
+        self.length = length
 
-@register("target_grouping", "phecode")
-def phecode(code: str) -> str:
-    vocab, sep, value = code.rpartition("//")
-    target = _phecode_map().get(value.replace(".", "").upper())
-    return f"PHECODE//{target}" if sep and "ICD" in vocab.upper() and target else code
+    def __call__(self, code: str) -> str | None:
+        parts = code.split("//")  # DIAGNOSIS//ICD//10//E119
+        if len(parts) >= 4 and parts[1] == "ICD":
+            return f"ICD{parts[2]}//{parts[3].replace('.', '').upper()[:self.length]}"
+        return code
 ```
 
-The map file is not in the repository: phecode maps for ICD-9-CM and ICD-10-CM are public
-(PheWAS catalog) and would be added under `modlehr/prepare/maps/`. Then
-`target_grouping: phecode` in the data config. `modlehr prepare` prints, per rule, how many
-codes were matched, how many targets they became, and how many survived
-`min_subjects_per_token`, which is the first thing to check after changing a grouping.
+```yaml
+target_grouping: icd_prefix
+target_grouping_options: {length: 4}
+```
+
+`modlehr prepare` prints, per rule, how many codes were matched, how many targets they became,
+and how many survived `min_subjects_per_token`, which is the first thing to check after changing
+a grouping. Mapping files go in `data/maps/` (not in the repository); see
+[disease_codes.md](disease_codes.md).
 
 ## Data sources
 

@@ -1,0 +1,4 @@
+# The plain GPT of mimic_iv_core_gpt.yaml on targets from configs/data/mimic_iv_core_phecode.yaml.
+defaults: [mimic_iv_core_gpt.yaml, ../data/mimic_iv_core_phecode.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_phecode

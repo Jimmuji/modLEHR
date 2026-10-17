@@ -22,6 +22,7 @@ VARIANTS="${VARIANTS:-rope_age alibi_age local_age gqa mla qknorm rmsnorm swiglu
 BASE=mimic_iv_core_gpt
 CONFIG="configs/experiment/$BASE.yaml"
 EXTRA=("$@")
+scripts/fetch_code_maps.sh  # the GEMs file the icd_gems target grouping reads
 
 run_one() {  # run_one <experiment> <seed>
   local dir="runs/${1}_s$2"

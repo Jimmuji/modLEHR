@@ -111,34 +111,48 @@ class ICDWithGEMs:
         return icd_3char(code)
 
 
-def load_phecode_map(path: str | Path) -> dict[str, str]:
+def load_phecode_map(path: str | Path, version: str | None = None) -> dict[str, str]:
     """ICD code (dots removed) -> phecode, from a PheWAS catalog map. The code column is the first
-    whose name starts with "icd", the phecode column the one named "phecode" (any case)."""
+    whose name starts with "icd", the phecode column the one named "phecode" (any case).
+
+    The combined v1.2 map (Phecode_map_v1_2_icd9_icd10cm.csv) holds both ICD versions, told apart
+    by its "Flag" column (9 or 10); with `version`, only that version's rows are read, since a few
+    codes exist in both with different meanings (ICD-9 E858 is a drug poisoning, ICD-10-CM E858 an
+    amyloidosis). A code listed with several phecodes (7,821 ICD-10-CM codes in that file) takes the
+    first one listed."""
     with _open(path) as f:
         reader = csv.DictReader(f)
         fields = reader.fieldnames or []
         code_col = next((c for c in fields if c.strip().lower().startswith("icd")), None)
         phe_col = next((c for c in fields if c.strip().lower() == "phecode"), None)
+        flag_col = next((c for c in fields if c.strip().lower() == "flag"), None)
         if code_col is None or phe_col is None:
             raise ValueError(f"{path}: expected an ICD code column and a 'phecode' column, found {fields}")
-        return {row[code_col].replace(".", "").strip().upper(): row[phe_col].strip()
-                for row in reader if row[code_col] and row[phe_col]}
+        table: dict[str, str] = {}
+        for row in reader:
+            if not row[code_col] or not row[phe_col]:
+                continue
+            if version and flag_col and row[flag_col].strip() != version:
+                continue
+            table.setdefault(row[code_col].replace(".", "").strip().upper(), row[phe_col].strip())
+        return table
 
 
 @register("target_grouping", "phecode")
 class Phecode:
     """ICD-9-CM and ICD-10-CM codes → phecodes, clinically meaningful groups built for EHR research.
 
-    Options: icd9_map and icd10_map, PheWAS catalog map files (either may be left out); unmapped:
-    "keep" (default, the code goes through icd_3char) or "drop" (not a target). A code not in the
-    map is looked up by ever shorter prefixes, so a more specific code finds its parent's phecode.
+    Options: icd9_map and icd10_map, PheWAS catalog map files (either may be left out; the combined
+    v1.2 file can be given as both); unmapped: "keep" (default, the code goes through icd_3char) or
+    "drop" (not a target). A code not in the map is looked up by ever shorter prefixes, so a more
+    specific code finds its parent's phecode.
     """
 
     def __init__(self, icd9_map: str | None = None, icd10_map: str | None = None, unmapped: str = "keep"):
         if unmapped not in ("keep", "drop"):
             raise ValueError("unmapped must be keep or drop")
-        self.maps = {"9": load_phecode_map(icd9_map) if icd9_map else {},
-                     "10": load_phecode_map(icd10_map) if icd10_map else {}}
+        self.maps = {"9": load_phecode_map(icd9_map, "9") if icd9_map else {},
+                     "10": load_phecode_map(icd10_map, "10") if icd10_map else {}}
         self.unmapped = unmapped
 
     def __call__(self, code: str) -> str | None:

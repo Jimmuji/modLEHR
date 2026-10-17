@@ -144,3 +144,17 @@ def test_convert_toy_from_the_command_line(tmp_path):
     main(["convert", "toy", "--out", str(tmp_path / "toy"), "--subjects", "50"])
     ds = open_meds(tmp_path / "toy", validate=True)
     assert len(ds.splits) == 50 and "NOTE//DISCHARGE" in set(ds.codes["code"])
+
+
+def test_a_layer_naming_a_grouping_replaces_its_options(tmp_path):
+    """Grouping options are file paths for one grouping; layering another grouping drops them,
+    while a layer that leaves the grouping alone still merges into them."""
+    (tmp_path / "gems.yaml").write_text("data:\n  target_grouping: icd_gems\n"
+                                        "  target_grouping_options: {gems_path: maps/gems.txt}\n")
+    (tmp_path / "split.yaml").write_text("defaults: [gems.yaml]\ndata:\n  target_grouping: icd_3char\n")
+    (tmp_path / "phecode.yaml").write_text("defaults: [gems.yaml]\ndata:\n  target_grouping: phecode\n"
+                                           "  target_grouping_options: {icd9_map: maps/p.csv}\n")
+    (tmp_path / "same.yaml").write_text("defaults: [gems.yaml]\ndata:\n  min_subjects_per_token: 7\n")
+    assert load_config(tmp_path / "split.yaml").data.target_grouping_options == {}
+    assert load_config(tmp_path / "phecode.yaml").data.target_grouping_options == {"icd9_map": "maps/p.csv"}
+    assert load_config(tmp_path / "same.yaml").data.target_grouping_options == {"gems_path": "maps/gems.txt"}

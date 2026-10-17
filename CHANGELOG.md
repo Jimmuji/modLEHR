@@ -9,6 +9,13 @@ Data
   first, then `dod`)
 - `scripts/fetch_mimic_iv.sh` resumes the raw MIMIC-IV download and checks it against SHA256SUMS.txt
 
+- The MIMIC-IV configs predict ICD-10 categories with ICD-9 mapped through the CMS GEMs
+  (`icd_gems`): 1,018 targets on MIMIC-IV diagnoses, against 1,398 with the eras apart
+  (`mimic_iv_core_icd3char.yaml`) and 1,361 phecodes (`mimic_iv_core_phecode.yaml`).
+  `scripts/fetch_code_maps.sh` downloads the GEMs and the phecode map and checks their hashes
+- `phecode` reads the combined v1.2 map (ICD-9-CM and ICD-10-CM in one file, by its `Flag` column);
+  a code listed with several phecodes takes the first
+- A config file that sets `data.target_grouping` replaces the inherited `target_grouping_options`
 - `modlehr run` prepares again when the MEDS files have changed, not only the data config:
   `prepare.json` records a fingerprint of the files (path, size, modification time)
 

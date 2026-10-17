@@ -25,7 +25,10 @@ def test_repo_configs_load():
     for path in sorted((REPO / "configs/experiment").glob("*.yaml")):  # every experiment config resolves
         load_config(path)
     mimic = load_config(REPO / "configs/experiment/mimic_iv_gpt.yaml")
-    assert mimic.data.target_grouping == "icd_3char" and mimic.model.max_len == 512
+    assert mimic.data.target_grouping == "icd_gems" and mimic.model.max_len == 512
+    for path in sorted((REPO / "configs/experiment").glob("mimic_iv_core_gpt_*.yaml")):
+        variant = load_config(path)  # a model file layered on top must not reset the size
+        assert (variant.model.d_model, variant.model.n_heads, variant.model.max_len) == (256, 8, 512), path.name
 
 
 def test_thinning_applies_to_context_events(tiny_config):

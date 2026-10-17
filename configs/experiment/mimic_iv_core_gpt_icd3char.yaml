@@ -1,0 +1,4 @@
+# The plain GPT of mimic_iv_core_gpt.yaml with ICD-9 and ICD-10 targets kept apart.
+defaults: [mimic_iv_core_gpt.yaml, ../data/mimic_iv_core_icd3char.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_icd3char

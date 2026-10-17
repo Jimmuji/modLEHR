@@ -76,3 +76,18 @@ def test_prepare_drops_codes_a_grouping_leaves_out(tiny_config, tmp_path):
     run_prepare(cfg.data, log=lambda *_: None)
     vocab = Vocabulary.load(tmp_path / "prepared_drop" / "vocab.json")
     assert "SNOMEDCT//1003" not in vocab.tokens and "SNOMEDCT//1001" in vocab.targets
+
+
+def test_phecode_combined_map_keeps_versions_apart(tmp_path):
+    """The combined v1.2 file holds ICD-9 and ICD-10-CM rows, told apart by Flag; a code in both
+    versions maps by its own version, and a code listed twice takes the first phecode."""
+    combined = tmp_path / "Phecode_map_v1_2_icd9_icd10cm.csv"
+    combined.write_text("ICD,Flag,ICDString,Phecode,PhecodeString,PhecodeCategory\n"
+                        "E858,9,Accidental poisoning by other drugs,977,Poisoning,injuries\n"
+                        "E85.8,10,Other amyloidosis,270.33,Amyloidosis,endocrine\n"
+                        "T58.02,10,Toxic effect of carbon monoxide,297.2,Toxic effect,mental\n"
+                        "T58.02,10,Toxic effect of carbon monoxide,986,Carbon monoxide,injuries\n")
+    group = Phecode(str(combined), str(combined))
+    assert group("DIAGNOSIS//ICD//9//E858") == "PHECODE//977"
+    assert group("DIAGNOSIS//ICD//10//E858") == "PHECODE//270.33"
+    assert group("DIAGNOSIS//ICD//10//T5802") == "PHECODE//297.2"

@@ -130,12 +130,20 @@ def _merge(base: dict, override: dict) -> dict:
     return out
 
 
+def _layer(base: dict, override: dict) -> dict:
+    """_merge, except that a layer naming a target grouping brings its own options: the options of
+    the grouping it replaces (mapping file paths, say) mean nothing to the new one."""
+    if "target_grouping" in (override.get("data") or {}) and "target_grouping_options" in (base.get("data") or {}):
+        base = {**base, "data": {k: v for k, v in base["data"].items() if k != "target_grouping_options"}}
+    return _merge(base, override)
+
+
 def _read(path: Path) -> dict:
     raw = yaml.safe_load(path.read_text()) or {}
     merged: dict = {}
     for parent in raw.pop("defaults", []) or []:
-        merged = _merge(merged, _read((path.parent / parent).resolve()))
-    return _merge(merged, raw)
+        merged = _layer(merged, _read((path.parent / parent).resolve()))
+    return _layer(merged, raw)
 
 
 def _section(cls: type, values: dict | None) -> Any:

@@ -4,10 +4,15 @@
 # sex, disease codes, death, and the hospital contacts that time them.
 #   DIAGNOSIS//ICD//9//4280, DIAGNOSIS//ICD//10//E119   diagnoses, timed at hospital discharge
 #   HOSPITAL_ADMISSION//<type>//<location>, ED_REGISTRATION
+# Targets: MIMIC-IV switched from ICD-9 to ICD-10 in October 2015, so the same disease has two
+# codes. icd_gems maps ICD-9 through the CMS GEMs, giving one set of ICD-10 categories (1,018
+# targets); mimic_iv_core_icd3char.yaml keeps the two eras apart (1,398) and
+# mimic_iv_core_phecode.yaml uses phecodes (1,361).
 data:
   meds_dir: data/mimic_iv_core_meds
   prepared_dir: runs/prepared/mimic_iv_core
-  target_grouping: icd_3char         # ICD-9 and ICD-10 diagnoses to three-character categories
+  target_grouping: icd_gems          # ICD-10 three-character categories, ICD-9 mapped through the CMS GEMs
+  target_grouping_options: {gems_path: data/maps/gems/2018_I9gem.txt}   # scripts/fetch_code_maps.sh
   min_subjects_per_token: 100
   value_mode: none                   # these tables carry no measurements
   events:
