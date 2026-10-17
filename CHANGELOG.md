@@ -28,6 +28,11 @@ Models
   variant on MIMIC-IV diagnoses over three seeds, against logistic regression
 
 Evaluation
+- Calibration counts the observed window from the landmark, (L, L + H]. It used to count H years
+  from the last event before L, which on MIMIC-IV is often years earlier (the sex token at age 0
+  for most subjects), so the window was mostly already known to be empty: expected over observed
+  read 4.3 on MIMIC-IV diagnoses and is about 0.7 counted from L. `evaluate.json` records
+  `"window": "landmark"`
 - `evaluate.controls`: `at_risk` (the default) or `never`, Delphi-2M's definition, where controls
   are subjects who never have the disease. The convention is recorded in `evaluate.json` and the
   classical baselines use the same one

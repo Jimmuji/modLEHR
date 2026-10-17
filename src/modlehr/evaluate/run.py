@@ -7,11 +7,14 @@ is the model's competing-risks probability of k within the horizon, read from it
 the last event at or before L. One AUC per (target, landmark) pair with enough cases and
 controls; the summary is the mean over pairs.
 
-Calibration. At each landmark the head's probability that the next target is k and comes within
-the horizon, counted from the last event at or before L, is compared with what happened next in
-the record. Subjects whose record ends sooner with no target are left out (censored). Reported
-as expected over observed events (1 is calibrated) for any target and for each target pooled,
-and as a table of predicted against observed by risk bin.
+Calibration. At each landmark the head's probability that the next target is k and comes in
+(L, L + H] is compared with whether the record's next target did. Subjects whose record ends
+before L + H with no target are left out (censored). Reported as expected over observed events
+(1 is calibrated) for any target and for each target pooled, and as a table of predicted against
+observed by risk bin. The head's waiting time is exponential, so its probability for a window of
+length H is the same wherever the window starts, as long as no target came before it; the window
+is counted from L, not from the last event before L, which can be years earlier (on MIMIC-IV it
+is often the sex token at age 0) and would make a window already known to be empty.
 
 Likelihood. The mean negative log-likelihood per prediction of the training objective, split
 into its event part (which target comes next) and its time part (how long until it). AUC is
@@ -92,12 +95,13 @@ CALIBRATION_BINS = np.array([0.0, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0])
 
 def calibration(split: PreparedSplit, subjects: np.ndarray, landmark: float, horizon: float,
                 risk: np.ndarray) -> tuple[dict, pd.DataFrame]:
-    """Predicted against observed next target within the horizon of the last event at or before L."""
+    """Predicted against observed next target in (L, L + H]."""
     rows = [history_before(split, i, landmark) for i in subjects]
     next_t = np.array([r["next_target"][-1] for r in rows])
-    dt = np.array([r["dt"][-1] for r in rows])
-    event = (next_t >= 0) & (dt <= horizon)
-    keep = event | (dt >= horizon)  # censored subjects have next_t -1 and dt shorter than the horizon
+    dt = np.array([r["dt"][-1] for r in rows])  # years from the last event at or before L
+    until = landmark - np.array([r["ages"][-1] for r in rows]) + horizon  # from that event to L + H
+    event = (next_t >= 0) & (dt <= until)
+    keep = event | (dt >= until)  # censored subjects have next_t -1 and a record ending before L + H
     n_targets = risk.shape[1]
     observed = np.zeros((len(rows), n_targets), dtype=bool)
     observed[np.flatnonzero(event), next_t[event]] = True
@@ -144,7 +148,8 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
                "split": cfg.evaluate.split, "checkpoint": str(checkpoint)}
     if calib:
         expected, observed = sum(c["expected_any"] for c in calib), sum(c["observed_any"] for c in calib)
-        summary["calibration"] = {"expected_over_observed": expected / max(observed, 1), "by_landmark": calib}
+        summary["calibration"] = {"expected_over_observed": expected / max(observed, 1), "window": "landmark",
+                                  "by_landmark": calib}
     if cfg.evaluate.likelihood:
         summary["likelihood"] = likelihood(model, split, cfg.evaluate.batch_size, device)
 
@@ -161,7 +166,7 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
     else:
         log("[evaluate] no target had enough cases and controls; lower evaluate.min_cases or add landmarks")
     if "calibration" in summary:
-        log(f"[evaluate] calibration: expected / observed next targets within {H:g} years = "
+        log(f"[evaluate] calibration: expected / observed next targets within {H:g} years of the landmark = "
             f"{summary['calibration']['expected_over_observed']:.2f} (1 is calibrated; "
             + ", ".join(f"age {c['landmark']:g}: {c['expected_over_observed']:.2f}" for c in calib) + ")")
     if "likelihood" in summary:

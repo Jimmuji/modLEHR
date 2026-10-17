@@ -158,3 +158,25 @@ def test_a_layer_naming_a_grouping_replaces_its_options(tmp_path):
     assert load_config(tmp_path / "split.yaml").data.target_grouping_options == {}
     assert load_config(tmp_path / "phecode.yaml").data.target_grouping_options == {"icd9_map": "maps/p.csv"}
     assert load_config(tmp_path / "same.yaml").data.target_grouping_options == {"gems_path": "maps/gems.txt"}
+
+
+def test_calibration_window_starts_at_the_landmark():
+    """The last event before L can be years earlier; the observed window is (L, L + H] all the same."""
+    from modlehr.evaluate.run import calibration
+
+    class Split:  # three subjects, two events each: sex at age 0, then one more
+        offsets = np.array([0, 2, 4, 6])
+        arrays = {"ages": np.array([0, 51, 0, 55, 0, 51], np.float32)}
+        next_target = np.array([0, -1, 0, -1, -1, -1])
+        dt = np.array([51, 0, 55, 0, 51, 0], np.float32)  # from each event to the next target or record end
+
+        def subject(self, i, start, n):
+            a = self.offsets[i]
+            return {"ages": self.arrays["ages"][a + start:a + n], "next_target": self.next_target[a + start:a + n],
+                    "dt": self.dt[a + start:a + n]}
+
+    # landmark 50, horizon 2: subject 0 has the target at 51 (a case), subject 1 at 55 (none within the
+    # window), subject 2's record ends at 51 without one (censored, left out)
+    summary, _ = calibration(Split(), np.arange(3), 50.0, 2.0, np.full((3, 1), 0.25))
+    assert summary["subjects"] == 2 and summary["observed_any"] == 1
+    assert summary["expected_any"] == 0.5
