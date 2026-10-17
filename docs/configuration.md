@@ -169,12 +169,18 @@ the `description_regex` keeps only disorders as targets.
 | `precision` | `fp32` | `bf16` runs the forward pass in bfloat16; CUDA only |
 | `grad_accum` | `1` | Batches whose gradients are added up per optimizer step, for a larger effective batch |
 | `compile` | `false` | `torch.compile` the model; worthwhile on CUDA for long runs |
+| `wandb_project` | none | Track the run in this Weights & Biases project: every check (losses, learning rate, steps per second, peak GPU memory; wandb adds GPU utilization), then the `evaluate` and `baseline` summaries in the same run. Off when unset. Needs `pip install wandb` and `wandb login` |
+| `wandb_entity` | none | The wandb team or user that owns the project; default is the logged-in user's |
 
 Each training step draws `batch_size` random subjects and a random window of at most `max_len`
 events from each. The run keeps the checkpoint with the lowest tuning loss.
 
 `last.pt` holds the optimizer and random-number state as well, and is rewritten at every check:
 `modlehr train --resume` continues from it exactly, and `--stop-after STEP` stops a run on purpose.
+
+With `wandb_project` set, the run's wandb id is kept in `out_dir/wandb_id`, so `--resume` and a
+later `modlehr evaluate` continue the same wandb run. On compute nodes without internet access, set
+`WANDB_MODE=offline` and upload afterwards from a login node with `wandb sync out_dir/wandb/offline-run-*`.
 
 `out_dir` receives `config.yaml` (the full resolved config), `log.jsonl` (one line per check:
 step, train and tuning loss, the loss parts, seconds), `best.pt`, `last.pt`, and later

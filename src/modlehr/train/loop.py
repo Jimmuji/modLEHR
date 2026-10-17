@@ -26,6 +26,7 @@ from modlehr.config import Config
 from modlehr.model.model import ModLEHR
 from modlehr.prepare.dataset import fixed_windows, open_split, random_windows
 from modlehr.prepare.vocabulary import Vocabulary
+from modlehr.track import Tracker
 
 
 def pick_device(name: str) -> torch.device:
@@ -106,6 +107,7 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
         f"{len(vocab.targets):,} targets, device {device}, {cfg.train.precision}"
         + (f", {cfg.train.grad_accum} batches per step" if cfg.train.grad_accum > 1 else ""))
 
+    tracker = Tracker(cfg, out_dir, "train")
     train_split = open_split(prepared, meds.train_split)
     tune_split = open_split(prepared, meds.tuning_split)
     tune_batches = fixed_windows(tune_split, cfg.train.batch_size, cfg.model.max_len, cfg.train.eval_batches)
@@ -128,6 +130,7 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
         log(f"[train] resuming after step {state['step']} (best tuning loss so far {best:.4f})")
 
     t0 = time.time()
+    last_check = (first_step, t0)
     with open(out_dir / "log.jsonl", "a" if resume else "w") as logf:
         for step in range(first_step, cfg.train.steps):
             for group in opt.param_groups:
@@ -151,6 +154,14 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
                 logf.write(json.dumps(record) + "\n")
                 logf.flush()
                 log(f"[train] step {step:6d}  train {record['train_loss']:.4f}  tune {tune:.4f}  ({record['seconds']}s)")
+                now = time.time()
+                tracked = {k: v for k, v in record.items() if k not in ("step", "seconds")}
+                tracked["lr"] = opt.param_groups[0]["lr"]
+                tracked["steps_per_second"] = (step + 1 - last_check[0]) / max(now - last_check[1], 1e-9)
+                if device.type == "cuda":
+                    tracked["gpu_peak_memory_gb"] = torch.cuda.max_memory_allocated(device) / 2**30
+                tracker.log(tracked, step)
+                last_check = (step + 1, now)
                 weights = {"model": model.state_dict(), "model_config": cfg.model.__dict__, "step": step, "tune_loss": tune}
                 if tune < best:
                     best = tune
@@ -161,6 +172,9 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
                            out_dir / "last.pt")
             if stopping and not last:
                 log(f"[train] stopped after step {step}; continue with --resume")
+                tracker.finish()
                 return out_dir / "best.pt"
     log(f"[train] best tuning loss {best:.4f} → {out_dir / 'best.pt'}")
+    tracker.summary({"best_tune_loss": best})
+    tracker.finish()
     return out_dir / "best.pt"

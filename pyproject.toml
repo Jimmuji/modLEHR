@@ -16,6 +16,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+track = ["wandb>=0.17"]
 
 [project.scripts]
 modlehr = "modlehr.cli:main"

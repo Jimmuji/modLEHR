@@ -38,6 +38,12 @@ Models
 - `configs/experiment/mimic_iv_core_gpt_*.yaml` and `scripts/compare_mimic_iv_core.sh`: every
   variant on MIMIC-IV diagnoses over three seeds, against logistic regression
 
+Tracking
+- `train.wandb_project` (and `wandb_entity`) tracks a run in Weights & Biases: losses, learning
+  rate, steps per second and peak GPU memory at every check, then the `evaluate` and `baseline`
+  summaries in the same run (one id per run directory, kept in `wandb_id`). Off by default;
+  works offline on compute nodes, with `wandb sync` afterwards
+
 Evaluation
 - Calibration counts the observed window from the landmark, (L, L + H]. It used to count H years
   from the last event before L, which on MIMIC-IV is often years earlier (the sex token at age 0

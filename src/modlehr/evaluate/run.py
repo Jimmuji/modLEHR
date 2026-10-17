@@ -41,6 +41,7 @@ from modlehr.model.model import ModLEHR
 from modlehr.prepare.dataset import PreparedSplit, collate, open_split
 from modlehr.prepare.timeline import first_target_ages
 from modlehr.prepare.vocabulary import Vocabulary
+from modlehr.track import Tracker
 from modlehr.train.loop import pick_device, to_device
 
 
@@ -159,6 +160,10 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
     if calib_tables:
         pd.concat(calib_tables).to_csv(out_csv.with_name(out_csv.stem + "_calibration.csv"), index=False)
     out_csv.with_suffix(".json").write_text(json.dumps(summary, indent=1))
+    tracker = Tracker(cfg, cfg.train.out_dir, "evaluate")
+    tracker.summary({k: v for k, v in summary.items() if k not in ("checkpoint", "split")},
+                    prefix=f"{cfg.evaluate.split}/{cfg.evaluate.controls}/")
+    tracker.finish()
     if len(result):
         lo, hi = summary["mean_auc_ci95"]
         log(f"[evaluate] mean AUC {summary['mean_auc']:.3f} (95% CI {lo:.3f} to {hi:.3f}) over "

@@ -96,6 +96,8 @@ class TrainConfig:
     precision: str = "fp32"  # fp32 | bf16 (CUDA): forward pass in bfloat16
     grad_accum: int = 1  # batches whose gradients are added up per optimizer step
     compile: bool = False  # torch.compile the model (CUDA; first steps are slower)
+    wandb_project: str | None = None  # Weights & Biases project; tracking is off when unset
+    wandb_entity: str | None = None  # wandb team or user (default: the logged-in user's)
 
 
 @dataclass

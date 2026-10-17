@@ -181,3 +181,48 @@ def test_calibration_window_starts_at_the_landmark():
     summary, _ = calibration(Split(), np.arange(3), 50.0, 2.0, np.full((3, 1), 0.25))
     assert summary["subjects"] == 2 and summary["observed_any"] == 1
     assert summary["expected_any"] == 0.5
+
+
+def test_wandb_tracking_with_a_stand_in(tiny_config, monkeypatch):
+    """With train.wandb_project set, training logs every check and evaluation adds its summary to the
+    same run: one id, kept in <out_dir>/wandb_id."""
+    import sys
+    import types
+
+    runs = []
+
+    class Run:
+        def __init__(self, **kwargs):
+            self.kwargs, self.logged, self.summary, self.finished = kwargs, [], {}, False
+            runs.append(self)
+
+        def log(self, values, step):
+            self.logged.append((step, values))
+
+        def finish(self):
+            self.finished = True
+
+    monkeypatch.setitem(sys.modules, "wandb", types.SimpleNamespace(init=lambda **kw: Run(**kw)))
+    cfg = copy.deepcopy(tiny_config)
+    cfg.train.wandb_project = "modlehr-test"
+    run_prepare(cfg.data, log=QUIET)
+    evaluate(cfg, train(cfg, log=QUIET), log=QUIET)
+
+    trained, evaluated = runs
+    assert trained.kwargs["id"] == evaluated.kwargs["id"] == (Path(cfg.train.out_dir) / "wandb_id").read_text()
+    assert trained.kwargs["project"] == "modlehr-test" and trained.kwargs["job_type"] == "train"
+    steps = [step for step, _ in trained.logged]
+    assert steps == [0, 10, 20, 29] and {"train_loss", "tune_loss", "lr", "steps_per_second"} <= set(trained.logged[-1][1])
+    assert "best_tune_loss" in trained.summary and trained.finished
+    assert 0 < evaluated.summary["held_out/at_risk/mean_auc"] < 1 and evaluated.finished
+    assert "held_out/at_risk/likelihood/nll" in evaluated.summary
+
+
+def test_tracking_is_off_by_default(tiny_config):
+    from modlehr.track import Tracker
+
+    tracker = Tracker(tiny_config, tiny_config.train.out_dir, "train")
+    tracker.log({"a": 1.0}, 0)
+    tracker.summary({"b": 2.0})
+    tracker.finish()
+    assert tracker.run is None and not (Path(tiny_config.train.out_dir) / "wandb_id").exists()

@@ -47,6 +47,7 @@ from modlehr.evaluate.task import LandmarkTask, history_before, landmark_task, s
 from modlehr.prepare.dataset import PreparedSplit, open_split
 from modlehr.prepare.timeline import first_target_ages
 from modlehr.prepare.vocabulary import Vocabulary
+from modlehr.track import Tracker
 
 MODELS = ("logistic", "gbm")
 
@@ -143,6 +144,10 @@ def run_baselines(cfg: Config, models: tuple[str, ...] = MODELS, max_dense_featu
                    "landmarks": cfg.evaluate.landmarks, "split": cfg.evaluate.split, "baseline": name,
                    "values": with_values}
         (out_dir / "evaluate.json").write_text(json.dumps(summary, indent=1))
+        tracker = Tracker(cfg, out_dir, "baseline")
+        tracker.summary({k: v for k, v in summary.items() if k != "split"},
+                        prefix=f"{cfg.evaluate.split}/{cfg.evaluate.controls}/")
+        tracker.finish()
         if len(result):
             lo, hi = summary["mean_auc_ci95"]
             log(f"[baseline] {name}: mean AUC {summary['mean_auc']:.3f} (95% CI {lo:.3f} to {hi:.3f}) "
