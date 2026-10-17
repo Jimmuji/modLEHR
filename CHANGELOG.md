@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+Results
+- MIMIC-IV diagnoses, ten architectures over three seeds on the Alliance cluster Fir: every
+  transformer beats logistic regression by about 0.012 AUC; no architecture moves AUC by more than
+  0.003 against the plain GPT (README, Results so far)
+
 Data
 - `modlehr convert mimic-iv-core`: MIMIC-IV's patients, admissions and diagnoses tables → MEDS,
   the Delphi-2M data shape on MIMIC, with `configs/data/mimic_iv_core.yaml` and

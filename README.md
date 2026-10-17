@@ -446,6 +446,49 @@ rotary attention over age.
 
 ## Results so far
 
+### MIMIC-IV diagnoses
+
+MIMIC-IV 3.1 patients, admissions and diagnoses (`modlehr convert mimic-iv-core`): 364,627 patients.
+Targets are ICD-10 three-character categories, with ICD-9 codes mapped through the CMS GEMs: 1,017
+diagnoses and death. Landmarks 40 to 80, a 2-year horizon, 1,062 (target, landmark) pairs on 73,083
+held-out patients. Each transformer is 256 wide with 6 layers and 512-event windows, trained for
+20,000 steps at batch 64 with seeds 1, 2 and 3 on the Alliance cluster Fir, three seeds per 40G H100
+slice (`scripts/fir/compare.sbatch`, about 30 minutes per model; MoE 48). Differences are paired
+over the 1,062 pairs after averaging each pair's AUC over the seeds.
+
+| Run | Parameters | Mean AUC (seeds 1, 2, 3) | Difference | Held-out NLL |
+|---|---|---|---|---|
+| Plain GPT | 5.34M | 0.665 (0.665, 0.668, 0.664) | | 3.361 |
+| Mixture of experts (`moe`) | 8.48M | 0.667 (0.667, 0.667, 0.666) | +0.0012 (+0.0002 to +0.0022) | 3.334 |
+| Sliding window over 5 years (`local_age`) | 5.34M | 0.666 (0.667, 0.669, 0.663) | +0.0007 (−0.0009 to +0.0023) | 3.370 |
+| Query and key normalization (`qk_norm`) | 5.34M | 0.666 (0.666, 0.668, 0.664) | +0.0003 (−0.0005 to +0.0011) | 3.340 |
+| Multi-head latent attention (`mla`) | 4.85M | 0.666 (0.665, 0.667, 0.666) | +0.0002 (−0.0007 to +0.0011) | 3.348 |
+| RMSNorm (`rmsnorm`) | 5.34M | 0.666 (0.667, 0.666, 0.664) | +0.0002 (−0.0009 to +0.0012) | 3.351 |
+| Rotary over age (`rope_age`) | 5.34M | 0.664 (0.667, 0.665, 0.661) | −0.0010 (−0.0021 to +0.0000) | 3.343 |
+| ALiBi over age (`alibi_age`) | 5.34M | 0.664 (0.666, 0.666, 0.660) | −0.0013 (−0.0023 to −0.0003) | 3.342 |
+| Grouped-query attention (`gqa`) | 4.94M | 0.664 (0.664, 0.667, 0.660) | −0.0018 (−0.0029 to −0.0007) | 3.352 |
+| SwiGLU feed-forward (`swiglu`) | 5.33M | 0.663 (0.663, 0.665, 0.660) | −0.0026 (−0.0036 to −0.0016) | 3.341 |
+| Logistic regression, same inputs | | 0.653 | −0.0123 (−0.0148 to −0.0097) | |
+
+How to read it:
+
+- **On real records the transformer beats the classical model**, by 0.012 (0.010 to 0.015), the
+  reverse of Synthea below. Under Delphi-2M's controls (`controls: never`) the plain GPT scores
+  0.655 over the three seeds and logistic regression 0.632.
+- **Swapping in parts from recent language models barely moves AUC.** Every difference is under
+  0.003, smaller than the spread between seeds of one model (0.664 to 0.668 for the plain GPT).
+  Four intervals exclude zero (MoE above, ALiBi, GQA and SwiGLU below), none by more than 0.003;
+  with nine comparisons, read them as weak.
+- **One seed misleads.** The Mac's seed-1 runs, with the same settings, had SwiGLU and the 5-year
+  window 0.005 ahead of the plain GPT; over three seeds SwiGLU is 0.003 behind it.
+- **The likelihood separates the variants more than AUC does.** All but the 5-year window have a
+  lower held-out NLL than the plain GPT, the mixture of experts lowest (3.334 against 3.361).
+- **The plain GPT predicts too few next outcomes:** expected over observed within two years of the
+  landmark is 0.75 to 0.76 over the three seeds. Everyone in the task has a later hospital stay,
+  so their observed rates are higher than in the training records as a whole.
+
+### Synthea
+
 Synthea, 22,962 patients; 164 targets; landmarks 40 to 70; 5-year horizon; 124 (target, landmark)
 pairs scored on 4,564 held-out patients. Each transformer has 1.25M parameters (GQA 1.16M) and
 3,000 training steps, and is trained with seeds 1, 2 and 3; each pair's AUC is averaged over the
@@ -621,7 +664,7 @@ it with the MEDS tools rather than narrowing the event rules.
 ## Roadmap
 
 - Results on MIMIC-IV with `phecode` and `icd_3char` targets, against `icd_gems`
-- Every architecture compared over several seeds, on MIMIC-IV (running: `scripts/compare_mimic_iv_core.sh`)
+- Labs, medications and ICU data (full MIMIC-IV) next to the diagnoses-only results above
 - A pretrained clinical language model as a text encoding, next to `hashed_bag`
 - Prediction tasks in the MEDS-DEV label format, for comparison with other MEDS models
 
