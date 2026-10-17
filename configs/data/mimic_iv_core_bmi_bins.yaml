@@ -1,0 +1,7 @@
+# As mimic_iv_core_bmi_event.yaml, with BMI in 3 bins (training terciles, tokens BMI (kg/m2)//Q1..Q3):
+# how Delphi-2M reads BMI, low / mid / high (Delphi uses fixed cut points).
+defaults: [mimic_iv_core_bmi_event.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_core_bmi_bins
+  value_mode: binned
+  n_bins: 3

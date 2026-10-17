@@ -99,3 +99,24 @@ def test_core_dataset_prepares(tmp_path, tiny_config):
     run_prepare(cfg.data, log=QUIET)
     split = open_split(cfg.data.prepared_dir, "train")
     assert len(split.offsets) - 1 == 3
+
+
+def test_core_adapter_adds_outpatient_measurements(tmp_path):
+    """With hosp/omr.csv.gz present, its rows come in as the official ETL writes them (code = result_name,
+    raw value as text), with numeric_value set when the value is a number."""
+    raw = write_raw(tmp_path / "raw")
+    pd.DataFrame([
+        {"subject_id": 1, "chartdate": "2152-03-01", "seq_num": 1, "result_name": "BMI (kg/m2)", "result_value": "27.5"},
+        {"subject_id": 1, "chartdate": "2152-03-01", "seq_num": 1, "result_name": "Blood Pressure", "result_value": "120/80"},
+        {"subject_id": 2, "chartdate": "2160-06-01", "seq_num": 1, "result_name": "Weight (Lbs)", "result_value": "180"},
+    ]).to_csv(raw / "hosp/omr.csv.gz", index=False)
+    out = tmp_path / "core_meds"
+    summary = convert(raw, out, held_out=0.0, tuning=0.0)
+    assert summary["omr_rows"] == 3
+
+    ds = open_meds(out, validate=True)
+    events = pd.concat([ds.read_shard(s) for s in ds.shards()]).set_index("code")
+    bmi, bp = events.loc["BMI (kg/m2)"], events.loc["Blood Pressure"]
+    assert bmi["numeric_value"] == 27.5 and bmi["time"] == pd.Timestamp("2152-03-01")
+    assert pd.isna(bp["numeric_value"]) and bp["text_value"] == "120/80"
+    assert pd.isna(events.loc["DIAGNOSIS//ICD//10//I10", "numeric_value"])  # other events keep no value

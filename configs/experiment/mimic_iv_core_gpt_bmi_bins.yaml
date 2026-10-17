@@ -1,0 +1,4 @@
+# The plain GPT of mimic_iv_core_gpt.yaml with BMI in 3 bins, as Delphi-2M reads it.
+defaults: [mimic_iv_core_gpt.yaml, ../data/mimic_iv_core_bmi_bins.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_bmi_bins

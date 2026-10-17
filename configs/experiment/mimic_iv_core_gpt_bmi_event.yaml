@@ -1,0 +1,4 @@
+# The plain GPT of mimic_iv_core_gpt.yaml with BMI as an event without its value.
+defaults: [mimic_iv_core_gpt.yaml, ../data/mimic_iv_core_bmi_event.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_bmi_event

@@ -1,0 +1,6 @@
+# As mimic_iv_core_bmi_event.yaml, with BMI's value kept as a number (scaled with the training mean and
+# SD), for a model with value_encoding: mlp.
+defaults: [mimic_iv_core_bmi_event.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_core_bmi_value
+  value_mode: continuous

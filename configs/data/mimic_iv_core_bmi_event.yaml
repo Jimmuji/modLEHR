@@ -1,0 +1,16 @@
+# MIMIC-IV diagnoses plus BMI from the outpatient record (hosp/omr; `modlehr convert mimic-iv-core`
+# adds it when the table is there), BMI entering as an event without its value: the arm that says how
+# much of BMI's effect is having had an outpatient measurement at all. The three BMI configs differ only
+# in value_mode; otherwise inputs and targets are those of mimic_iv_core.yaml, whose plain GPT is the
+# no-BMI arm. BMI is recorded at most outpatient visits, so one per year is kept.
+defaults: [mimic_iv_core.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_core_bmi_event
+  value_mode: none
+  events:
+    - {name: sex, role: static, prefix: "GENDER//"}
+    - {name: death, role: target, codes: ["MEDS_DEATH"]}
+    - {name: diagnoses, role: target, prefix: "DIAGNOSIS//ICD//"}
+    - {name: admissions, role: context, prefix: "HOSPITAL_ADMISSION//"}
+    - {name: emergency, role: context, codes: ["ED_REGISTRATION"]}
+    - {name: bmi, role: measurement, codes: ["BMI (kg/m2)"], thin_years: 1}
