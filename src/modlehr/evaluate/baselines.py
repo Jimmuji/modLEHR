@@ -139,8 +139,9 @@ def run_baselines(cfg: Config, models: tuple[str, ...] = MODELS, max_dense_featu
         out_dir = run_dir.with_name(f"{run_dir.name}_{name}")
         out_dir.mkdir(parents=True, exist_ok=True)
         result.to_csv(out_dir / "evaluate.csv", index=False)
-        summary = {**summarize(result), "horizon_years": H, "landmarks": cfg.evaluate.landmarks,
-                   "split": cfg.evaluate.split, "baseline": name, "values": with_values}
+        summary = {**summarize(result), "horizon_years": H, "controls": cfg.evaluate.controls,
+                   "landmarks": cfg.evaluate.landmarks, "split": cfg.evaluate.split, "baseline": name,
+                   "values": with_values}
         (out_dir / "evaluate.json").write_text(json.dumps(summary, indent=1))
         if len(result):
             lo, hi = summary["mean_auc_ci95"]

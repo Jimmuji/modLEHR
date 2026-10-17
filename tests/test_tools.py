@@ -101,6 +101,7 @@ def test_evaluate_baselines_and_compare(tiny_config):
     for name, out in written.items():
         assert out == run_dir.with_name(f"{run_dir.name}_{name}")
         assert (out / "evaluate.csv").exists()
+        assert json.loads((out / "evaluate.json").read_text())["controls"] == "at_risk"
 
     table = compare([run_dir, *written.values()])
     assert list(table["run"]) == ["run", "run_logistic", "run_gbm"]
