@@ -20,6 +20,12 @@ train:
 4. Paths *inside* a section (`meds_dir`, `prepared_dir`, `out_dir`) are relative to the directory
    the command runs from. Run every command from the repository root.
 
+The base model, `configs/model/gpt_baseline.yaml`, sets every model key. The other model files
+list only the part they swap, so they go after the experiment that sets the size:
+`defaults: [mimic_iv_core_gpt.yaml, ../model/gpt_rope_age.yaml]` keeps the 256-wide MIMIC model
+and changes its attention. A model file that listed `gpt_baseline.yaml` in its own `defaults`
+would reset the size to the baseline's.
+
 The repository splits configs by role, so experiments reuse the pieces:
 
 | Directory | Holds | Example |

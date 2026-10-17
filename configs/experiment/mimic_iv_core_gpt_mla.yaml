@@ -1,0 +1,4 @@
+# MIMIC-IV diagnoses: the plain GPT of mimic_iv_core_gpt.yaml with multi-head latent attention.
+defaults: [mimic_iv_core_gpt.yaml, ../model/gpt_mla.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_mla

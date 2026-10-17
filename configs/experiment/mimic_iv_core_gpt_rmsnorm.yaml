@@ -1,0 +1,4 @@
+# MIMIC-IV diagnoses: the plain GPT of mimic_iv_core_gpt.yaml with RMSNorm in place of LayerNorm.
+defaults: [mimic_iv_core_gpt.yaml, ../model/gpt_rmsnorm.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_rmsnorm

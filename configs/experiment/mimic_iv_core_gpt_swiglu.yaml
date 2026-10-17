@@ -1,0 +1,4 @@
+# MIMIC-IV diagnoses: the plain GPT of mimic_iv_core_gpt.yaml with SwiGLU feed-forward layer.
+defaults: [mimic_iv_core_gpt.yaml, ../model/gpt_swiglu.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_swiglu

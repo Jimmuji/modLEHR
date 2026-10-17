@@ -1,5 +1,4 @@
-# Plain GPT with grouped-query attention: 4 query heads share 2 key/value heads.
-defaults: [gpt_baseline.yaml]
+# Plain GPT with grouped-query attention: pairs of query heads share a key/value head
+# (n_kv_heads defaults to half of n_heads).
 model:
   attention: gqa
-  attention_options: {n_kv_heads: 2}

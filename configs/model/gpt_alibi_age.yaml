@@ -1,5 +1,4 @@
 # Plain GPT with ALiBi over age: each head subtracts slope_h * (years between events) from its
 # attention scores, so heads look back over different time spans.
-defaults: [gpt_baseline.yaml]
 model:
   attention: alibi_age

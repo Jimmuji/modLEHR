@@ -57,8 +57,9 @@ Here the distance is years, not positions.
    for what the part claims; for `alibi_age`, that shifting every age by the same amount
    changes nothing and changing the gap between events does.
 
-4. **Point a config at it.** `configs/model/gpt_alibi_age.yaml` and
-   `configs/experiment/synthea_gpt_alibi_age.yaml`, or no file at all:
+4. **Point a config at it.** `configs/model/gpt_alibi_age.yaml` (only `attention: alibi_age`, so
+   it layers onto a model of any size) and `configs/experiment/synthea_gpt_alibi_age.yaml`, or no
+   file at all:
 
    ```bash
    modlehr run --config configs/experiment/synthea_gpt.yaml --set model.attention=alibi_age \

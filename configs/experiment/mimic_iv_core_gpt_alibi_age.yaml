@@ -1,0 +1,4 @@
+# MIMIC-IV diagnoses: the plain GPT of mimic_iv_core_gpt.yaml with ALiBi over age.
+defaults: [mimic_iv_core_gpt.yaml, ../model/gpt_alibi_age.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_alibi_age

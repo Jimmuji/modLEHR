@@ -12,13 +12,15 @@ Pass 1 is skipped when values are dropped (value_mode: none).
 
 Output directory:
     vocab.json      input and target vocabularies
-    prepare.json    the data config, per-rule counts (codes matched, tokens, tokens kept), value
-                    statistics or bin cut points, target counts and exposure in the training split
+    prepare.json    the data config, a fingerprint of the MEDS files read, per-rule counts (codes
+                    matched, tokens, tokens kept), value statistics or bin cut points, target counts
+                    and exposure in the training split
     <split>/        one .npy per array, subjects in subject_id order (see prepare.dataset)
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import asdict
 from pathlib import Path
@@ -100,6 +102,15 @@ def _shards(ds, cfg: DataConfig, code_rule: pd.Series, split_of: dict, train_onl
             yield events, frame
 
 
+def meds_fingerprint(meds_dir: str | Path) -> str:
+    """Hash of every file's path, size and modification time: changes when the MEDS data is rewritten."""
+    root, h = Path(meds_dir), hashlib.sha1()
+    for f in sorted(p for p in root.rglob("*") if p.is_file()):
+        st = f.stat()
+        h.update(f"{f.relative_to(root)}\t{st.st_size}\t{st.st_mtime_ns}\n".encode())
+    return h.hexdigest()
+
+
 def run_prepare(cfg: DataConfig, log=print) -> dict:
     out_dir = Path(cfg.prepared_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -109,7 +120,7 @@ def run_prepare(cfg: DataConfig, log=print) -> dict:
     code_rule = classify_codes(ds.codes, cfg.events)
     split_of = dict(zip(ds.splits["subject_id"], ds.splits["split"]))
     log(f"[prepare] reading {cfg.meds_dir}: {len(ds.shards())} shards, {len(code_rule):,} codes matched by the rules")
-    meta: dict = {"data_config": asdict(cfg)}
+    meta: dict = {"data_config": asdict(cfg), "meds_fingerprint": meds_fingerprint(cfg.meds_dir)}
 
     # pass 1: training values of every measurement code
     cuts, stats = None, None
@@ -214,13 +225,15 @@ def _apply_values(frame: pd.DataFrame, cfg: DataConfig, cuts: dict | None) -> pd
 
 
 def is_current(cfg: DataConfig) -> bool:
-    """True if prepared_dir holds a complete prepare run made with this exact data config."""
+    """True if prepared_dir holds a complete prepare run made with this exact data config, from the
+    MEDS files as they are now (a converter run since then rewrites them)."""
     out_dir = Path(cfg.prepared_dir)
     needed = [out_dir / "prepare.json", out_dir / "vocab.json"] + [out_dir / s / "offsets.npy" for s in SPLITS]
     if not all(p.exists() for p in needed):
         return False
-    stored = json.loads((out_dir / "prepare.json").read_text()).get("data_config")
-    return stored == json.loads(json.dumps(asdict(cfg)))
+    stored = json.loads((out_dir / "prepare.json").read_text())
+    return (stored.get("data_config") == json.loads(json.dumps(asdict(cfg)))
+            and stored.get("meds_fingerprint") == meds_fingerprint(cfg.meds_dir))
 
 
 def describe(cfg: DataConfig, top: int = 10) -> list[str]:

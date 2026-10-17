@@ -1,4 +1,3 @@
 # Plain GPT with RMSNorm (Llama) in place of LayerNorm.
-defaults: [gpt_baseline.yaml]
 model:
   norm: rmsnorm

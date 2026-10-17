@@ -52,7 +52,7 @@ raw records ──convert──> MEDS ──prepare──> timelines ──train
 | `modlehr baseline` | Logistic regression and gradient boosting on exactly the same prediction task |
 | `modlehr generate` | Sample future outcomes for one patient |
 | `modlehr simulate` | Sample one future per held-out patient, cut at the end of the real record, and compare incidence by age with the records |
-| `modlehr run` | `prepare` (only if the data config changed), `train` and `evaluate` in one command |
+| `modlehr run` | `prepare` (only if the data config or the MEDS files changed), `train` and `evaluate` in one command |
 | `modlehr compare` | Mean AUC of several runs and the paired difference against the first, averaging over seeds |
 
 ## Installation
@@ -438,6 +438,11 @@ Options go in the config, for example `attention_options: {n_kv_heads: 2}` or
 `ffn_options: {n_experts: 8}`. Each part has a ready model config in `configs/model/`. All keys and
 defaults: [docs/configuration.md](docs/configuration.md).
 
+Every file in `configs/model/` other than `gpt_baseline.yaml` lists only the part it swaps, so it
+layers onto a model of any size. `configs/experiment/mimic_iv_core_gpt_rope_age.yaml` is
+`defaults: [mimic_iv_core_gpt.yaml, ../model/gpt_rope_age.yaml]`: the 256-wide MIMIC model with
+rotary attention over age.
+
 ## Results so far
 
 Synthea, 22,962 patients; 164 targets; landmarks 40 to 70; 5-year horizon; 124 (target, landmark)
@@ -508,8 +513,8 @@ starting point (256 wide, 6 layers, 512-event windows, 20,000 steps; landmarks 4
 2-year horizon, since a MIMIC record ends at the last hospital contact); on a CUDA GPU add
 `--set train.precision=bf16`.
 
-**MIMIC-IV diagnoses only.** The full ETL reads every table in the release, which is a 7 GB
-download. `modlehr convert mimic-iv-core` reads the three tables that carry the diagnosis history
+**MIMIC-IV diagnoses only.** The full ETL reads every table in the release, labevents and
+chartevents among them. `modlehr convert mimic-iv-core` reads the three tables that carry the diagnosis history
 (`hosp/patients.csv.gz`, `hosp/admissions.csv.gz`, `hosp/diagnoses_icd.csv.gz`, 56 MB) and
 writes the same code families, so `configs/data/mimic_iv_core.yaml` is `mimic_iv.yaml` with the
 measurement rules removed. This is the Delphi-2M data shape on MIMIC: sex, disease codes, death,
@@ -521,6 +526,10 @@ RAW=~/mimic_dl/physionet.org/files/mimiciv/3.1 scripts/run_mimic_iv_core.sh
 ```
 
 It is the comparison that says what the measurements are worth, not a replacement for the full run.
+`scripts/compare_mimic_iv_core.sh` trains the plain GPT and nine variants on it over seeds 1 to 3
+and compares them with logistic regression, all variants at one seed before the next seed; each
+run takes about half an hour on an Apple M-series GPU. Runs already evaluated are skipped and
+interrupted ones resume, so the script can be stopped and started again.
 `scripts/fetch_mimic_iv.sh` resumes the raw download with a PhysioNet account, checking each file
 against the release's `SHA256SUMS.txt`.
 
@@ -577,7 +586,8 @@ src/modlehr/
   config.py        experiment configuration and command-line overrides
   cli.py           the commands
 scripts/           compare_synthea.sh: every Synthea variant over three seeds; run_mimic_iv.sh: full MIMIC-IV;
-                   run_mimic_iv_core.sh: MIMIC-IV diagnoses only; fetch_mimic_iv.sh: resume the raw download
+                   run_mimic_iv_core.sh: MIMIC-IV diagnoses only; compare_mimic_iv_core.sh: every variant
+                   on it over three seeds; fetch_mimic_iv.sh: resume the raw download
 tests/             unit tests and end-to-end tests on a tiny synthetic MEDS dataset
 docs/              design notes, configuration reference, extension guide, disease codes
 ```

@@ -1,5 +1,4 @@
 # Plain GPT with a sliding window over time: each event attends to the previous 5 years only.
-defaults: [gpt_baseline.yaml]
 model:
   attention: local_age
   attention_options: {window_years: 5.0}

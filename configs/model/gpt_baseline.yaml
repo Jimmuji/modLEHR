@@ -1,5 +1,7 @@
 # Plain GPT: pre-norm LayerNorm, multi-head causal attention, GELU MLP, age encoding in place
 # of positions, measurements read as tokens only. Swap any part by its registered name.
+# The other files in this directory list only the part they swap, so an experiment layers one
+# on top of this file (and its own size), e.g. defaults: [mimic_iv_core_gpt.yaml, ../model/gpt_rope_age.yaml].
 model:
   d_model: 128
   n_layers: 6

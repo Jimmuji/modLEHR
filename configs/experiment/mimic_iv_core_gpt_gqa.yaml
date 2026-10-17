@@ -1,0 +1,4 @@
+# MIMIC-IV diagnoses: the plain GPT of mimic_iv_core_gpt.yaml with grouped-query attention.
+defaults: [mimic_iv_core_gpt.yaml, ../model/gpt_gqa.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_gqa

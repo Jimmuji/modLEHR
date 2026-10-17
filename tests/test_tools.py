@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -73,6 +74,12 @@ def test_prepare_reports_rules_and_is_current(tiny_config):
     changed = copy.deepcopy(tiny_config.data)
     changed.min_subjects_per_token = 3
     assert not is_current(changed)
+    shard = next(Path(tiny_config.data.meds_dir).rglob("*.parquet"))  # the MEDS data rewritten since
+    st = shard.stat()
+    os.utime(shard, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000_000))
+    assert not is_current(tiny_config.data)
+    os.utime(shard, ns=(st.st_atime_ns, st.st_mtime_ns))
+    assert is_current(tiny_config.data)
     assert any("prediction targets" in line for line in describe(tiny_config.data))
 
 

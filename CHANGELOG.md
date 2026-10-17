@@ -9,6 +9,17 @@ Data
   first, then `dod`)
 - `scripts/fetch_mimic_iv.sh` resumes the raw MIMIC-IV download and checks it against SHA256SUMS.txt
 
+- `modlehr run` prepares again when the MEDS files have changed, not only the data config:
+  `prepare.json` records a fingerprint of the files (path, size, modification time)
+
+Models
+- The variant files in `configs/model/` list only the part they swap, so they layer onto a model of
+  any size. Before, each one pulled in `gpt_baseline.yaml` and reset the width to 128. `gpt_gqa`
+  and `gpt_mla` take their sizes from the model (half the query heads; a latent of `d_model` / 4),
+  which on the Synthea baseline are the values they had written out
+- `configs/experiment/mimic_iv_core_gpt_*.yaml` and `scripts/compare_mimic_iv_core.sh`: every
+  variant on MIMIC-IV diagnoses over three seeds, against logistic regression
+
 Evaluation
 - `evaluate.controls`: `at_risk` (the default) or `never`, Delphi-2M's definition, where controls
   are subjects who never have the disease. The convention is recorded in `evaluate.json` and the
