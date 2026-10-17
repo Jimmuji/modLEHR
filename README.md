@@ -487,6 +487,27 @@ How to read it:
   landmark is 0.75 to 0.76 over the three seeds. Everyone in the task has a later hospital stay,
   so their observed rates are higher than in the training records as a whole.
 
+### MIMIC-IV diagnoses plus BMI
+
+BMI from MIMIC-IV's outpatient record (`hosp/omr`, added by `convert mimic-iv-core` when the table is
+there): 1.90M readings for 153,725 of the 364,627 patients, one per year kept. Same targets, pairs and
+plain GPT as above; seeds 1, 2 and 3, one run per 10G H100 slice. This is the closest MIMIC-IV has to
+Delphi-2M's lifestyle inputs, which it reads as three levels.
+
+| Inputs | Mean AUC | vs diagnoses only | vs BMI as an event | Logistic regression |
+|---|---|---|---|---|
+| Diagnoses only | 0.665 | | | 0.653 |
+| + BMI as an event, without its value (`value_mode: none`) | 0.687 | +0.0216 (+0.0199 to +0.0233) | | 0.673 |
+| + BMI in 3 bins (`value_mode: binned`) | 0.689 | +0.0236 (+0.0219 to +0.0254) | +0.0020 (+0.0009 to +0.0031) | 0.670 |
+| + BMI as a number (`continuous`, `value_encoding: mlp`) | 0.687 | +0.0214 (+0.0197 to +0.0231) | −0.0002 (−0.0009 to +0.0005) | 0.673 |
+
+- **Nearly all the gain is having a BMI measurement at all.** A reading marks a patient seen in the
+  hospital's outpatient clinics, whose later diagnoses are more likely to be recorded; it says more
+  about follow-up than about BMI.
+- **The value adds 0.002 in bins and nothing as a number**: the `mlp` value encoding is 0.002 behind
+  three bins (0.001 to 0.003). BMI's risk is U-shaped, which bins express directly; whether a larger
+  value encoder closes the gap is open.
+
 ### Synthea
 
 Synthea, 22,962 patients; 164 targets; landmarks 40 to 70; 5-year horizon; 124 (target, landmark)
