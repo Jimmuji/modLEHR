@@ -1,0 +1,5 @@
+# The plain GPT on MIMIC-IV diagnoses with Delphi-2M's "no event" tokens
+# (configs/data/mimic_iv_core_no_event.yaml), against mimic_iv_core_gpt.yaml.
+defaults: [mimic_iv_core_gpt.yaml, ../data/mimic_iv_core_no_event.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_no_event
