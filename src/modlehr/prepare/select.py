@@ -52,6 +52,8 @@ def read_events(ds: MedsDataset, shard, code_rule: pd.Series) -> pd.DataFrame:
     events = ds.read_shard(shard, codes=wanted)
     birth = events.loc[events["code"] == meds.birth_code].groupby("subject_id")["time"].min()
     events = events.loc[(events["code"] != meds.birth_code) & events["subject_id"].isin(birth.index)].copy()
+    if events.empty:  # an empty shard, or nobody in it with a birth event
+        return events.drop(columns="time").assign(age=np.zeros(0, np.float32), rule=np.zeros(0, int))
     age = (events["time"] - events["subject_id"].map(birth)).dt.total_seconds() / SECONDS_PER_YEAR
     events["age"] = age.fillna(0.0).clip(lower=0.0).astype("float32")
     events["rule"] = events["code"].map(code_rule).astype(int)

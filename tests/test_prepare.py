@@ -217,3 +217,24 @@ def test_follow_up_counts_events_that_prepare_drops(tmp_path):
     run_prepare(cfg, log=lambda *_: None)
     end = open_split(cfg.prepared_dir, "train").follow_up_end
     np.testing.assert_allclose(end[:4], [53.0, 54.0, 55.0, 51.5], atol=1e-4)
+
+
+def test_shards_without_birth_events_are_skipped(tmp_path):
+    """Subjects without MEDS_BIRTH are dropped, also when a whole shard has none, or no rows at all."""
+    import meds
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from conftest import write_meds
+    from modlehr.config import DataConfig, EventRule
+
+    root = write_meds(tmp_path / "meds", [(s, 50.0, "DX//A", None) for s in range(5)])
+    no_birth = pd.DataFrame({"subject_id": [99], "time": [pd.Timestamp("2000-01-01")], "code": ["DX//A"],
+                             "numeric_value": [None], "text_value": [None]})
+    for name, df in (("1", no_birth), ("2", no_birth.iloc[:0])):
+        df = df.astype({"time": "datetime64[us]"})
+        pq.write_table(pa.Table.from_pandas(df, preserve_index=False).cast(meds.DataSchema.schema()),
+                       root / "data" / "train" / f"{name}.parquet")
+    cfg = DataConfig(meds_dir=str(root), prepared_dir=str(tmp_path / "prepared"), min_subjects_per_token=1,
+                     value_mode="none", events=[EventRule(name="dx", role="target", prefix="DX//")])
+    meta = run_prepare(cfg, log=lambda *_: None)
+    assert meta["summary"]["train"]["subjects"] == 5

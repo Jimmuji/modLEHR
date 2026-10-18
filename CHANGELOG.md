@@ -41,6 +41,8 @@ Fixes from a second review
   measurement ended follow-up up to `thin_years` early (2 years on Synthea, 3 months on full
   MIMIC-IV), and on MIMIC-IV diagnoses a last stay that brought no new diagnosis ended it at
   admission rather than discharge. Needs re-preparing
+- `prepare` skips a MEDS shard with no `MEDS_BIRTH` rows, or no rows at all; it stopped with a pandas
+  TypeError instead of dropping those subjects as documented
 
 Results
 - MIMIC-IV diagnoses, ten architectures over three seeds on the Alliance cluster Fir: every
