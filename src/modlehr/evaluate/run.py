@@ -7,9 +7,12 @@ is the model's competing-risks probability of k within the horizon, read from it
 the last event at or before L. One AUC per (target, landmark) pair with enough cases and
 controls; the summary is the mean over pairs.
 
-Calibration. At each landmark, the predicted number of targets that first occur in (L, L + H],
-the sum over targets of the risk (targets a patient already had are left out), is compared with
-the number observed. The window starts at L even when the last event is years earlier. Patients
+Calibration. At each landmark, the predicted number of targets that first occur in (L, L + H] is
+compared with the number observed. The prediction sums, over the targets a patient has not had,
+the probability that each is recorded in the window: it has to come before death, since nothing is
+recorded after it (the head's observed_risk). This comes from the head's rates whatever
+evaluate.risk is; that setting picks the AUC score only. The window starts at L even when the last
+event is years earlier. Patients
 whose follow-up ends before L + H are not dropped, which would leave the observed numbers too high:
 each patient whose window is fully observed (followed to L + H, or dead within it) is weighted by
 1 / P(still followed), estimated by Kaplan-Meier from the follow-up end times (inverse probability
@@ -57,19 +60,25 @@ def load_model(checkpoint: str | Path, prepared_dir: Path, device: torch.device)
 
 
 @torch.no_grad()
-def landmark_risks(model: ModLEHR, split: PreparedSplit, subjects: np.ndarray, landmark: float, horizon: float,
-                   batch_size: int, device: torch.device, kind: str = "marginal") -> np.ndarray:
-    """[len(subjects), n_targets] risk of each target within the horizon, from the history up to the landmark."""
+def landmark_outputs(model: ModLEHR, split: PreparedSplit, subjects: np.ndarray, landmark: float, batch_size: int,
+                     device: torch.device) -> torch.Tensor:
+    """[len(subjects), n_targets] the head's output (log-rates) at each subject's last event at or before the landmark."""
     rows = [history_before(split, i, landmark, model.cfg.max_len) for i in subjects]
-    risks = []
+    outputs = []
     for b in range(0, len(rows), batch_size):
         chunk = rows[b:b + batch_size]
-        batch = to_device(collate(chunk), device)
-        out = model(batch)
+        out = model(to_device(collate(chunk), device))
         last = torch.tensor([len(r["tokens"]) - 1 for r in chunk], device=device)
-        risks.append(model.head.risk(out[torch.arange(len(chunk), device=device), last], horizon, kind)
-                     .float().cpu().numpy())
-    return np.concatenate(risks) if risks else np.zeros((0, model.head.proj.out_features))
+        outputs.append(out[torch.arange(len(chunk), device=device), last].float().cpu())
+    return torch.cat(outputs) if outputs else torch.zeros((0, model.head.proj.out_features))
+
+
+def observed_probabilities(model: ModLEHR, outputs: torch.Tensor, horizon: float, death: int | None) -> np.ndarray:
+    """Probability that each target is recorded within the horizon, for calibration. Heads without
+    observed_risk fall back to their marginal risk."""
+    if hasattr(model.head, "observed_risk"):
+        return model.head.observed_risk(outputs, horizon, death).numpy()
+    return model.head.risk(outputs, horizon, "marginal").numpy()
 
 
 @torch.no_grad()
@@ -114,7 +123,8 @@ def censoring_weights(time: np.ndarray, censored: np.ndarray, known: np.ndarray)
 
 
 def calibration(task, risk: np.ndarray, death: int | None) -> tuple[dict, pd.DataFrame]:
-    """Predicted against observed numbers of targets first occurring in (L, L + H], weighted for censoring."""
+    """Predicted against observed numbers of targets first occurring in (L, L + H], weighted for censoring.
+    risk: [n, n_targets] the probability that each target is recorded in the window (observed_probabilities)."""
     L, H = task.landmark, task.horizon
     open_ = task.first > L  # targets the patient has not had by L
     observed = open_ & (task.first <= L + H)
@@ -150,9 +160,10 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
     rows, calib, calib_tables = [], [], []
     for L in cfg.evaluate.landmarks:
         task = landmark_task(split, vocab, L, H, first, cfg.evaluate.controls)
-        risk = landmark_risks(model, split, task.subjects, L, H, cfg.evaluate.batch_size, device, cfg.evaluate.risk)
+        outputs = landmark_outputs(model, split, task.subjects, L, cfg.evaluate.batch_size, device)
+        risk = model.head.risk(outputs, H, cfg.evaluate.risk).numpy()
         if len(task.subjects):
-            c_summary, c_table = calibration(task, risk, death)
+            c_summary, c_table = calibration(task, observed_probabilities(model, outputs, H, death), death)
             calib.append(c_summary)
             calib_tables.append(c_table)
         for k, name in enumerate(vocab.targets):
@@ -171,6 +182,7 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
         expected, observed = sum(c["expected"] for c in calib), sum(c["observed"] for c in calib)
         summary["calibration"] = {"expected_over_observed": expected / max(observed, 1e-9), "window": "landmark",
                                   "counts": "targets first occurring in the window", "observed": "censoring-weighted",
+                                  "expected": "probability each target is recorded in the window, before death",
                                   "by_landmark": calib}
     if cfg.evaluate.likelihood:
         summary["likelihood"] = likelihood(model, split, cfg.evaluate.batch_size, device)

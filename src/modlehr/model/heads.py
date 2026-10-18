@@ -71,6 +71,20 @@ class CompetingRiskHead(nn.Module):
         return share * p_any
 
     @staticmethod
+    def observed_risk(log_rates: torch.Tensor, horizon_years: float, death: int | None = None) -> torch.Tensor:
+        """Probability that each target is recorded within the horizon, which calibration compares with
+        the records. Nothing is recorded after death, so k must come first:
+        (lambda_k / (lambda_k + lambda_d))(1 - exp(-(lambda_k + lambda_d) H)), with lambda_d death's rate;
+        death itself has 1 - exp(-lambda_d H). Without a death target it is the marginal risk."""
+        rates = log_rates.exp()
+        if death is None:
+            return -torch.expm1(-rates * horizon_years)
+        with_death = rates + rates[..., death:death + 1]
+        out = rates / with_death * -torch.expm1(-with_death * horizon_years)
+        out[..., death] = -torch.expm1(-rates[..., death] * horizon_years)
+        return out
+
+    @staticmethod
     def sample(log_rates: torch.Tensor, generator: torch.Generator | None = None) -> tuple[torch.Tensor, torch.Tensor]:
         """Draw (target, years until it) from the competing-risks distribution."""
         log_total = torch.logsumexp(log_rates, dim=-1)

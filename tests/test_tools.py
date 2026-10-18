@@ -202,6 +202,44 @@ def test_calibration_is_unbiased_under_censoring():
     summary, _ = calibration(task, np.full((n, 1), 0.5), death=None)
     assert abs(summary["expected_over_observed"] - 1.0) < 0.03
 
+
+def test_calibration_reads_one_for_the_true_hazards_when_death_competes():
+    """Nothing is recorded after death, so the expected count uses the probability that a target comes
+    before it. Each target on its own (the marginal risk) read 1.17 here."""
+    from modlehr.evaluate.run import calibration
+    from modlehr.evaluate.task import LandmarkTask
+    from modlehr.model.heads import CompetingRiskHead
+
+    rng = np.random.default_rng(0)
+    n, landmark, horizon, death = 200_000, 80.0, 2.0, 2
+    rates = np.array([0.3, 0.05, 0.4])  # two diseases, then death
+    wait = rng.exponential(1 / rates, size=(n, 3))
+    followed = np.minimum(wait[:, death], 10.0)  # until death, or well past the window
+    end = landmark + followed
+    first = np.where(wait <= followed[:, None], landmark + wait, np.inf)
+    task = LandmarkTask(landmark, horizon, np.arange(n), first, end)
+    log_rates = torch.log(torch.tensor(rates, dtype=torch.float64)).expand(n, 3)
+    observed = CompetingRiskHead.observed_risk(log_rates, horizon, death).numpy()
+    summary, _ = calibration(task, observed, death)
+    assert abs(summary["expected_over_observed"] - 1.0) < 0.02
+    marginal = CompetingRiskHead.risk(log_rates, horizon).numpy()
+    assert calibration(task, marginal, death)[0]["expected_over_observed"] > 1.1
+    assert np.allclose(CompetingRiskHead.observed_risk(log_rates[:1], horizon), marginal[:1])  # no death target
+
+
+def test_calibration_does_not_depend_on_the_auc_score(tiny_config):
+    """evaluate.risk picks the AUC score; calibration comes from the rates either way."""
+    run_prepare(tiny_config.data, log=QUIET)
+    best = train(tiny_config, log=QUIET)
+    read = lambda: json.loads((Path(tiny_config.train.out_dir) / "evaluate.json").read_text())  # noqa: E731
+    evaluate(tiny_config, best, log=QUIET)
+    marginal = read()
+    tiny_config.evaluate.risk = "next_event"
+    evaluate(tiny_config, best, log=QUIET)
+    next_event = read()
+    assert next_event["risk"] == "next_event" and marginal["mean_auc"] != next_event["mean_auc"]
+    assert next_event["calibration"] == marginal["calibration"]
+
 def test_wandb_tracking_with_a_stand_in(tiny_config, monkeypatch):
     """With train.wandb_project set, training logs every check and evaluation adds its summary to the
     same run: one id, kept in <out_dir>/wandb_id."""
