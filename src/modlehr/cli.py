@@ -11,6 +11,7 @@
     modlehr baseline --config configs/experiment/synthea_gpt.yaml
     modlehr generate --config configs/experiment/synthea_gpt.yaml --subject 0 --start-age 50
     modlehr simulate --config configs/experiment/synthea_gpt.yaml --start-age 50
+    modlehr delphi   --config configs/experiment/mimic_iv_core_gpt.yaml --seed 1   (Delphi-2M's own AUC)
     modlehr run      --config configs/experiment/synthea_gpt.yaml --seed 2
     modlehr compare  runs/synthea_gpt_s1 runs/synthea_gpt_rope_age_s1 runs/synthea_gpt_logistic
 
@@ -32,6 +33,7 @@ CONFIG_COMMANDS = {
     "baseline": "logistic regression and gradient boosting on the same task",
     "generate": "sample futures for one patient",
     "simulate": "sample one future per held-out patient and compare incidence with the records",
+    "delphi": "Delphi-2M's own AUC (by sex and 5-year age band, against never-havers), to compare with its numbers",
     "run": "prepare (if the data config changed), train and evaluate",
 }
 
@@ -62,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--set", action="append", default=[], metavar="SECTION.KEY=VALUE",
                        help="override a config value, e.g. --set model.attention=gqa (repeatable)")
         p.add_argument("--seed", type=int, help="set train.seed and add _s<seed> to train.out_dir")
-        if name in ("evaluate", "generate", "simulate"):
+        if name in ("evaluate", "generate", "simulate", "delphi"):
             p.add_argument("--checkpoint", help="default: <train.out_dir>/best.pt")
         if name == "simulate":
             p.add_argument("--start-age", type=float, required=True)
@@ -70,6 +72,9 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--out-dir", help="default: <train.out_dir>")
         if name == "evaluate":
             p.add_argument("--out", help="default: <train.out_dir>/evaluate.csv")
+        if name == "delphi":
+            p.add_argument("--gap-days", default="0.1,365.25",
+                           help="comma-separated gaps before each diagnosis; Delphi-2M reports 0.1 day and one year")
         if name == "baseline":
             p.add_argument("--models", default="logistic,gbm", help="comma-separated: logistic, gbm")
             p.add_argument("--gbm-features", type=int, default=2000,
@@ -162,6 +167,10 @@ def main(argv: list[str] | None = None) -> None:
         best = train(cfg, resume=args.resume, stop_after=args.stop_after)
         if args.stop_after is None or args.stop_after >= cfg.train.steps - 1:
             evaluate(cfg, best)
+    elif args.command == "delphi":
+        from modlehr.evaluate.delphi import delphi_auc
+        for gap in (float(g) for g in args.gap_days.split(",") if g.strip()):
+            delphi_auc(cfg, checkpoint, gap, seed=cfg.train.seed)
     elif args.command == "simulate":
         from modlehr.generate.simulate import simulate
         simulate(cfg, checkpoint, args.start_age, args.subjects, args.out_dir, seed=cfg.train.seed)

@@ -245,3 +245,24 @@ def test_tracking_is_off_by_default(tiny_config):
     tracker.summary({"b": 2.0})
     tracker.finish()
     assert tracker.run is None and not (Path(tiny_config.train.out_dir) / "wandb_id").exists()
+
+
+def test_delphi_prediction_points_and_bands():
+    from modlehr.evaluate.delphi import band_of, prediction_index
+
+    ages = np.array([0.0, 50.0, 50.0, 51.0, 60.0], np.float32)
+    # strictly before (time - gap): a diagnosis at 51 with a 0.1-day gap is predicted from the events at 50
+    assert list(prediction_index(ages, np.array([51.0, 50.0, 60.5]), 0.1 / 365.25)) == [2, 0, 4]
+    assert list(prediction_index(ages, np.array([51.0]), 1.0)) == [0]  # one year back: only age 0 is before 50
+    assert list(band_of(np.array([39.9, 40.0, 44.9, 79.9, 80.0]))) == [-1, 0, 0, 7, -1]
+
+
+def test_delphi_auc_runs_end_to_end(tiny_config):
+    from modlehr.evaluate.delphi import delphi_auc
+
+    run_prepare(tiny_config.data, log=QUIET)
+    best = train(tiny_config, log=QUIET)
+    table = delphi_auc(tiny_config, best, gap_days=0.1, log=QUIET)
+    summary = json.loads((Path(tiny_config.train.out_dir) / "evaluate_delphi_gap0.1d.json").read_text())
+    assert len(table) and table["auc"].between(0, 1).all() and set(table["sex"]) <= {"female", "male", "all"}
+    assert summary["gap_days"] == 0.1 and 0 < summary["mean_auc"] < 1
