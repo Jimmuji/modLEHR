@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import numpy as np
+
 from modlehr.evaluate.run import evaluate, load_model
 from modlehr.generate.sample import sample_future
 from modlehr.prepare.dataset import open_split
@@ -20,6 +22,9 @@ def test_prepare_train_evaluate_generate(tiny_config):
 
     result = evaluate(tiny_config, checkpoint, log=quiet)
     assert len(result) > 0 and result["auc"].between(0, 1).all()
+    summary = json.loads((Path(tiny_config.train.out_dir) / "evaluate.json").read_text())
+    held_out = open_split(tiny_config.data.prepared_dir, "held_out")  # every prediction scored once
+    assert summary["likelihood"]["predictions"] == int(np.asarray(held_out.arrays["loss_mask"]).sum())
 
     prepared = Path(tiny_config.data.prepared_dir)
     model, vocab = load_model(checkpoint, prepared, "cpu")

@@ -267,3 +267,44 @@ def test_first_target_ages_within_follow_up():
     np.testing.assert_array_equal(first_target_ages(tokens, ages, offsets, vocab), [[40, 30], [inf, inf], [50, 20]])
     end = np.array([35.0, 0.0, 60.0], dtype=np.float32)
     np.testing.assert_array_equal(first_target_ages(tokens, ages, offsets, vocab, end), [[inf, 30], [inf, inf], [50, 20]])
+
+
+def test_split_arrays_do_not_depend_on_sharding(tmp_path):
+    """SplitWriter joins shards in subject_id order, so the same events give the same arrays however
+    the MEDS data is sharded."""
+    from conftest import write_meds
+    from modlehr.config import DataConfig, EventRule
+
+    rng = np.random.default_rng(0)
+    rows = []
+    for s in rng.permutation(40):
+        rows += [(int(s), None, "GENDER//" + "FM"[s % 2], None), (int(s), 30.0 + s % 7, "DX//A", None),
+                 (int(s), 41.0 + s % 5, "DX//B", None)]
+        rows += [(int(s), float(a), "LAB//1", float(rng.normal())) for a in range(35, 60, 4)]
+    rules = [EventRule(name="sex", role="static", prefix="GENDER//"), EventRule(name="dx", role="target", prefix="DX//"),
+             EventRule(name="labs", role="measurement", prefix="LAB//")]
+    splits = []
+    for shards in (1, 3):
+        cfg = DataConfig(meds_dir=str(write_meds(tmp_path / f"meds{shards}", rows, shards=shards)), events=rules,
+                         prepared_dir=str(tmp_path / f"prepared{shards}"), min_subjects_per_token=5, value_mode="binned")
+        run_prepare(cfg, log=lambda *_: None)
+        splits.append(open_split(cfg.prepared_dir, "train"))
+    one, three = splits
+    assert len(one) == 40 and list(one.subject_ids) == sorted(one.subject_ids)
+    for k in ("subject_ids", "offsets", "tokens", "ages", "target", "next_target", "dt", "loss_mask", "follow_up_end"):
+        assert np.array_equal(np.asarray(one.arrays[k]), np.asarray(three.arrays[k])), k
+
+
+def test_splits_written_before_tied_labels_still_load(tiny_config):
+    """Without target and follow_up_end, a split gets one label per time and follow-up to the last event."""
+    from modlehr.prepare.dataset import collate
+
+    run_prepare(tiny_config.data, log=lambda *_: None)
+    path = Path(tiny_config.data.prepared_dir) / "held_out"
+    (path / "target.npy").unlink()
+    (path / "follow_up_end.npy").unlink()
+    split = open_split(tiny_config.data.prepared_dir, "held_out")
+    ages = np.asarray(split.arrays["ages"])
+    np.testing.assert_array_equal(split.follow_up_end, ages[split.offsets[1:] - 1])
+    row = split.subject(0)
+    assert "next_set" not in row and "next_set" not in collate([row])
