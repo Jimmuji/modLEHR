@@ -12,6 +12,7 @@
     modlehr generate --config configs/experiment/synthea_gpt.yaml --subject 0 --start-age 50
     modlehr simulate --config configs/experiment/synthea_gpt.yaml --start-age 50
     modlehr delphi   --config configs/experiment/mimic_iv_core_gpt.yaml --seed 1   (Delphi-2M's own AUC)
+    modlehr export-delphi --config configs/experiment/toy_gpt.yaml   (the prepared data in Delphi-2M's format)
     modlehr run      --config configs/experiment/synthea_gpt.yaml --seed 2
     modlehr compare  runs/synthea_gpt_s1 runs/synthea_gpt_rope_age_s1 runs/synthea_gpt_logistic
 
@@ -34,6 +35,7 @@ CONFIG_COMMANDS = {
     "generate": "sample futures for one patient",
     "simulate": "sample one future per held-out patient and compare incidence with the records",
     "delphi": "Delphi-2M's own AUC (by sex and 5-year age band, against never-havers), to compare with its numbers",
+    "export-delphi": "write the prepared data in Delphi-2M's format, with a config for its train.py",
     "run": "prepare (if the data config changed), train and evaluate",
 }
 
@@ -66,6 +68,9 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--seed", type=int, help="set train.seed and add _s<seed> to train.out_dir")
         if name in ("evaluate", "generate", "simulate", "delphi"):
             p.add_argument("--checkpoint", help="default: <train.out_dir>/best.pt")
+        if name == "export-delphi":
+            p.add_argument("--out", help="default: <train.out_dir>_delphi_data")
+            p.add_argument("--delphi-out", help="where Delphi's train.py writes its checkpoint; default: <train.out_dir>_delphi_code")
         if name == "simulate":
             p.add_argument("--start-age", type=float, required=True)
             p.add_argument("--subjects", type=int, default=1000, help="held-out patients to sample, at most")
@@ -153,6 +158,9 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "evaluate":
         from modlehr.evaluate.run import evaluate
         evaluate(cfg, checkpoint, args.out)
+    elif args.command == "export-delphi":
+        from modlehr.external.delphi import export
+        export(cfg, args.out or f"{cfg.train.out_dir}_delphi_data", args.delphi_out or f"{cfg.train.out_dir}_delphi_code")
     elif args.command == "baseline":
         from modlehr.evaluate.baselines import run_baselines
         run_baselines(cfg, tuple(m.strip() for m in args.models.split(",") if m.strip()), args.gbm_features)
