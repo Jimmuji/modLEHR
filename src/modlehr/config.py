@@ -63,6 +63,12 @@ class DataConfig:
     n_bins: int = 3
     text_buckets: int = 65536  # text: words are hashed into this many buckets
     text_max_words: int = 256  # text: words kept per note, from the start
+    # Where a subject's follow-up starts. first_event: at the first event of any rule, so at age 0 when a
+    # static fact (sex) is recorded. first_contact: at the first event of a follow_up rule other than a
+    # static one, for sources whose records begin at a first contact (MIMIC-IV's first admission): before
+    # it nothing could have been recorded, so earlier events carry no loss, and a landmark task needs the
+    # subject followed by the landmark.
+    follow_up_from: str = "first_event"
 
 
 @dataclass
@@ -177,7 +183,8 @@ def _rule(raw: Any) -> EventRule:
 
 # Values checked when a config is loaded, so a typo fails before any work is done rather than at the
 # stage that reads it (a misspelt evaluate.risk would otherwise fail after training).
-CHOICES = {("data", "value_mode"): ("continuous", "binned", "none"), ("train", "precision"): ("fp32", "bf16"),
+CHOICES = {("data", "value_mode"): ("continuous", "binned", "none"), ("data", "follow_up_from"): ("first_event", "first_contact"),
+           ("train", "precision"): ("fp32", "bf16"),
            ("evaluate", "controls"): ("at_risk", "never"), ("evaluate", "risk"): ("marginal", "next_event")}
 
 

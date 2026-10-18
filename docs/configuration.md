@@ -68,6 +68,7 @@ way; edit the data config.
 | `n_bins` | `3` | Number of quantile bins when `value_mode: binned`. Cut points come from the training split |
 | `text_buckets` | `65536` | Text events: words are hashed (CRC-32) into this many ids |
 | `text_max_words` | `256` | Text events: words kept from the start of each note |
+| `follow_up_from` | `first_event` | Where follow-up starts. `first_event`: at the first event of any rule, so at age 0 when a static fact such as sex is recorded. `first_contact`: at the first event of a `follow_up` rule that is not static, for sources whose records begin at a first contact (MIMIC-IV's first admission). Before it nothing could have been recorded, so earlier events stay inputs but carry no loss, and a landmark task only includes subjects followed by the landmark |
 
 ### Event rules (`data.events`)
 

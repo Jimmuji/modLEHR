@@ -42,8 +42,7 @@ def simulate(cfg: Config, checkpoint: str | Path, start_age: float, n_subjects: 
     device = pick_device(cfg.train.device)
     model, vocab = load_model(checkpoint, prepared, device)
     split = open_split(prepared, cfg.evaluate.split)
-    ages, offsets = split.arrays["ages"], split.offsets
-    first_age, last_age = np.asarray(ages[offsets[:-1]]), split.follow_up_end  # follow-up, not the last event
+    first_age, last_age = split.follow_up_start, split.follow_up_end  # follow-up, not the record
     eligible = np.flatnonzero((first_age <= start_age) & (last_age > start_age))
     if not len(eligible):
         raise ValueError(f"no {cfg.evaluate.split} patient is followed at age {start_age:g}")

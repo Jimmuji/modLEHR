@@ -1,0 +1,9 @@
+# MIMIC-IV diagnoses with follow-up from each patient's first hospital contact rather than from birth.
+# A MIMIC-IV record starts at the first admission or emergency visit: nothing before it could have been
+# recorded, yet with follow-up from the first event (the sex token at age 0) the stretch from birth to
+# that contact counts as observed and free of disease, and every landmark includes patients whose
+# first contact is still to come. Otherwise the same as mimic_iv_core.yaml.
+defaults: [mimic_iv_core.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_core_first_contact
+  follow_up_from: first_contact

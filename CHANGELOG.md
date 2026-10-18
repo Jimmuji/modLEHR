@@ -14,6 +14,13 @@ Delphi-2M's own code on the same data
   both scored the same way, `modlehr compare`. On the toy data it takes about a minute on a CPU
 - docs/delphi.md: what modLEHR's plain GPT shares with Delphi-2M and where the two differ
 
+Follow-up from the first contact
+- `data.follow_up_from: first_contact` starts follow-up at a subject's first event of a `follow_up`
+  rule that is not static (MIMIC-IV's first admission) instead of the first event (the sex token at
+  age 0). Events before it carry no loss, and a landmark task only includes subjects followed by the
+  landmark; prepared splits store `follow_up_start`. Off by default, so prepared data and results
+  do not change; `configs/experiment/mimic_iv_core_gpt_first_contact.yaml` runs it on MIMIC-IV
+
 Fixes from an external code review (all six of its hypotheses held up)
 - Targets recorded at the same time are all labels of that time. Before, only the first (in token
   order) was, so on MIMIC-IV, where every diagnosis of an admission is timed at its discharge,

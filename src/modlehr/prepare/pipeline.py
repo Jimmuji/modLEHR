@@ -65,7 +65,7 @@ def tokenize(events: pd.DataFrame, cfg: DataConfig) -> pd.DataFrame:
     out.loc[out["role"] == "static", "age"] = 0.0
     # from every event the rules matched, before any is dropped below or as a rare token: a thinned
     # measurement or a repeated diagnosis still shows the subject was followed then
-    out["follow_up_end"] = follow_up_end(out)
+    out["follow_up_start"], out["follow_up_end"] = follow_up_window(out, cfg.follow_up_from)
     out = out.loc[out["token"].notna()]  # a grouping can leave a code out of the targets
     out = out.sort_values(["subject_id", "age"], kind="stable")
 
@@ -84,14 +84,21 @@ def tokenize(events: pd.DataFrame, cfg: DataConfig) -> pd.DataFrame:
     return out
 
 
-def follow_up_end(frame: pd.DataFrame) -> pd.Series:
-    """Per event, its subject's end of follow-up: the last event of a rule with follow_up: true (the
-    last event at all when there is none), and no later than death."""
+def follow_up_window(frame: pd.DataFrame, start_from: str = "first_event") -> tuple[pd.Series, pd.Series]:
+    """Per event, its subject's start and end of follow-up. The end is the last event of a rule with
+    follow_up: true (the last event at all when there is none), and no later than death. The start is
+    the first event (start_from first_event) or the first event of a follow_up rule that is not static
+    (first_contact; never, inf, for a subject without one)."""
     subject, age = frame["subject_id"], frame["age"]
     end = age.where(frame["follow_up"]).groupby(subject).transform("max")
     end = end.fillna(age.groupby(subject).transform("max"))
     death = age.where(frame["code"] == meds.death_code).groupby(subject).transform("min")
-    return np.fmin(end, death)
+    if start_from == "first_contact":
+        contact = frame["follow_up"] & (frame["role"] != "static")
+        start = age.where(contact).groupby(subject).transform("min").fillna(np.inf).astype(age.dtype)
+    else:
+        start = age.groupby(subject).transform("min")
+    return start, np.fmin(end, death)
 
 
 def format_rules(rules: list[dict]) -> list[str]:

@@ -4,11 +4,11 @@ A prepared split is a directory with one .npy file per array, read memory-mapped
 larger than memory can still be trained on:
 
     subject_ids  [n_subjects]       offsets      [n_subjects + 1]  (events of subject i are offsets[i]:offsets[i+1])
-    follow_up_end [n_subjects]
+    follow_up_start follow_up_end [n_subjects]
     tokens ages values target next_target dt loss_mask   [n_events]   (see prepare.timeline)
 
-Splits written before target and follow_up_end existed still load: they get one label per time and
-follow-up to the last event.
+Splits written before target and the follow-up arrays existed still load: they get one label per
+time and follow-up from the first event to the last.
 
 Splits of data with text events also hold text_ref, note_offsets and note_words (see prepare.text).
 """
@@ -27,7 +27,7 @@ from modlehr.prepare.timeline import ARRAYS, SUBJECT_ARRAYS, next_target_sets
 FILES = ("subject_ids", "offsets") + ARRAYS + SUBJECT_ARRAYS
 DTYPES = {"subject_ids": np.int64, "offsets": np.int64, "tokens": np.int32, "ages": np.float32, "values": np.float32,
           "target": np.int32, "next_target": np.int32, "dt": np.float32, "loss_mask": np.bool_,
-          "follow_up_end": np.float32}
+          "follow_up_start": np.float32, "follow_up_end": np.float32}
 
 
 class PreparedSplit:
@@ -45,6 +45,11 @@ class PreparedSplit:
             self.follow_up_end = np.asarray(self.arrays["follow_up_end"])
         else:  # written before follow-up was tracked: it ran to the last event
             self.follow_up_end = np.asarray(self.arrays["ages"])[self.offsets[1:] - 1] if len(self.offsets) > 1 \
+                else np.zeros(0, np.float32)
+        if "follow_up_start" in self.arrays:
+            self.follow_up_start = np.asarray(self.arrays["follow_up_start"])
+        else:  # written before follow-up could start late: from the first event
+            self.follow_up_start = np.asarray(self.arrays["ages"])[self.offsets[:-1]] if len(self.offsets) > 1 \
                 else np.zeros(0, np.float32)
         self.has_text = "text_ref" in self.arrays
         if self.has_text:

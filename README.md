@@ -75,7 +75,7 @@ With [uv](https://docs.astral.sh/uv/):
 git clone https://github.com/Jimmuji/modLEHR.git && cd modLEHR
 uv venv --python 3.13 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
-.venv/bin/python -m pytest          # 92 tests, about 20 seconds
+.venv/bin/python -m pytest          # 95 tests, about 20 seconds
 ```
 
 With plain pip: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
@@ -246,7 +246,10 @@ event. It does five things, all set in the data config (full reference in
    target is recorded: all the targets recorded then (a discharge often brings several diagnoses
    at once), and the years until it. If none follows, the event is censored at the end of
    follow-up: the subject's last event of a rule with `follow_up: true` (every rule by default),
-   and no later than death. Events after follow-up stay inputs but carry no loss. Only the last
+   and no later than death. Events after follow-up stay inputs but carry no loss. Follow-up starts
+   at the first event; with `follow_up_from: first_contact` it starts at the first event of a
+   follow-up rule that is not static, for records that begin at a first hospital contact, and
+   events before it carry no loss either. Only the last
    event at each distinct time carries a loss, so the model predicts after seeing everything
    recorded at that moment.
 

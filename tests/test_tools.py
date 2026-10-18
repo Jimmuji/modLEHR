@@ -37,7 +37,8 @@ def test_overrides_parse_yaml_values():
 
 @pytest.mark.parametrize("bad", ["model.not_a_key=1", "nosection.steps=1", "train.steps", "data.events=[]",
                                  "evaluate.risk=marginl", "evaluate.controls=nevr", "evaluate.landmarks=50",
-                                 "evaluate.horizon_years=0", "data.value_mode=bins", "train.precision=fp16"])
+                                 "evaluate.horizon_years=0", "data.value_mode=bins", "train.precision=fp16",
+                                 "data.follow_up_from=birth"])
 def test_bad_overrides_fail(bad):
     with pytest.raises(ValueError):
         apply_overrides(load_config(CONFIG), [bad])

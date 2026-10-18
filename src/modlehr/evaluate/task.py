@@ -63,8 +63,7 @@ def landmark_task(split: PreparedSplit, vocab: Vocabulary, landmark: float, hori
     """The task at one landmark. Pass `first` (from first_target_ages) to reuse it across landmarks."""
     if controls not in CONTROLS:
         raise ValueError(f"evaluate.controls must be one of {CONTROLS}, got {controls!r}")
-    ages, offsets = split.arrays["ages"], split.offsets
-    start, end = np.asarray(ages)[offsets[:-1]], split.follow_up_end  # end of follow-up, not of the record
+    start, end = split.follow_up_start, split.follow_up_end  # follow-up, not the record
     subjects = np.flatnonzero((start <= landmark) & (end > landmark))
     if first is None:
         first = split_first_ages(split, vocab)
