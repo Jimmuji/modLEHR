@@ -24,7 +24,7 @@ can be compared on identical subjects, events and splits.
 | | Delphi-2M | modLEHR |
 |---|---|---|
 | End of a record | The last token | The end of follow-up, set by the data config's `follow_up` rules and death; the stretch from the last event to it is censored in the likelihood |
-| "No event" tokens | Inserted at random, one every five years on average, up to the last token; they are predicted like any other token | None. A prediction at a landmark comes from the last event before it |
+| "No event" tokens | Inserted at random, one every five years on average, up to the last token; they are predicted like any other token | Off by default: a prediction at a landmark comes from the last event before it. With `data.no_event_years: 5` training inserts them (as inputs that carry a loss, never predicted) and a landmark is read at one |
 | Targets recorded together | Attention between them is masked in training; the wait counts from the last untied token | All of them are labels of that time; only the last event of each time carries a loss |
 | Inputs that are not targets | Sex and lifestyle tokens, left out of the loss; lifestyle ages shifted at random in training | Any role (static, measurement, categorical, context, text), never predicted |
 | Measurements | Levels as tokens (BMI low, normal, high) | Binned tokens, a scaled number (`value_encoding: mlp`) or none |

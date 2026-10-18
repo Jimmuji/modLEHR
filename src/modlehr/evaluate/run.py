@@ -45,7 +45,7 @@ from modlehr.evaluate.task import history_before, landmark_task, split_first_age
 from modlehr.external.delphi import DelphiModel, is_delphi_checkpoint
 from modlehr.model.model import ModLEHR
 from modlehr.prepare.dataset import PreparedSplit, collate, open_split
-from modlehr.prepare.vocabulary import Vocabulary
+from modlehr.prepare.vocabulary import NO_EVENT, Vocabulary
 from modlehr.track import Tracker
 from modlehr.train.loop import pick_device, to_device
 
@@ -64,6 +64,8 @@ def load_model(checkpoint: str | Path, prepared_dir: Path, device: torch.device,
     model = ModLEHR(ModelConfig(**state["model_config"]), n_tokens=len(vocab.tokens), n_targets=len(vocab.targets),
                     n_text_buckets=meta.get("text_buckets", 0))
     model.load_state_dict(state["model"])
+    if NO_EVENT in vocab.token_index:  # trained with "no event" tokens: ask at one, placed at the landmark
+        model.query_token = vocab.token_index[NO_EVENT]
     return model.to(device).eval(), vocab
 
 
@@ -71,7 +73,8 @@ def load_model(checkpoint: str | Path, prepared_dir: Path, device: torch.device,
 def landmark_outputs(model: ModLEHR, split: PreparedSplit, subjects: np.ndarray, landmark: float, batch_size: int,
                      device: torch.device) -> torch.Tensor:
     """[len(subjects), n_targets] the head's output (log-rates) at each subject's last event at or before the
-    landmark. A model with a query_token (Delphi-2M's "no event") is read at that token, placed at the landmark."""
+    landmark. A model with a query_token (Delphi-2M's "no event", for a Delphi checkpoint or a model trained with
+    data.no_event_years) is read at that token, placed at the landmark."""
     query = getattr(model, "query_token", None)
     rows = [history_before(split, i, landmark, model.cfg.max_len - (query is not None)) for i in subjects]
     if query is not None:

@@ -21,6 +21,13 @@ Follow-up from the first contact
   landmark; prepared splits store `follow_up_start`. Off by default, so prepared data and results
   do not change; `configs/experiment/mimic_iv_core_gpt_first_contact.yaml` runs it on MIMIC-IV
 
+"No event" tokens
+- `data.no_event_years`: Delphi-2M's "no event" tokens. Training inserts one at a random age every
+  this many years on average (Delphi-2M: 5), between a window's first and last events and within
+  follow-up, each labelled with the next target from its own age; tuning windows get them too.
+  `evaluate`, `generate` and `simulate` then ask at one placed at the landmark or start age instead
+  of reading the last event before it, often years earlier. Off by default
+
 Fixes
 - `modlehr convert synthea --raw-dir` reads the folder given to Synthea as `--exporter.baseDirectory`,
   as the README's walkthrough does; it looked only in that folder and in chunk folders, not in the

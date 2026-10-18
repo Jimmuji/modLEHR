@@ -25,7 +25,7 @@ import yaml
 from modlehr.config import Config
 from modlehr.model.model import ModLEHR
 from modlehr.prepare.dataset import fixed_windows, open_split, random_windows
-from modlehr.prepare.vocabulary import Vocabulary
+from modlehr.prepare.vocabulary import NO_EVENT, Vocabulary
 from modlehr.track import Tracker
 
 
@@ -110,7 +110,9 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
     tracker = Tracker(cfg, out_dir, "train")
     train_split = open_split(prepared, meds.train_split)
     tune_split = open_split(prepared, meds.tuning_split)
-    tune_batches = fixed_windows(tune_split, cfg.train.batch_size, cfg.model.max_len, cfg.train.eval_batches)
+    no_event = (vocab.token_index[NO_EVENT], cfg.data.no_event_years) if cfg.data.no_event_years is not None else None
+    tune_batches = fixed_windows(tune_split, cfg.train.batch_size, cfg.model.max_len, cfg.train.eval_batches,
+                                 no_event=no_event)
     opt = make_optimizer(model, cfg.train)
     if cfg.train.compile:
         model.compile()  # in place; parameter names in checkpoints stay the same
@@ -139,7 +141,8 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
                 group["lr"] = lr_at(step, cfg.train)
             opt.zero_grad(set_to_none=True)
             for _ in range(cfg.train.grad_accum):
-                batch = to_device(random_windows(train_split, cfg.train.batch_size, cfg.model.max_len, rng), device)
+                batch = to_device(random_windows(train_split, cfg.train.batch_size, cfg.model.max_len, rng, no_event),
+                                  device)
                 with autocast(device, cfg.train.precision):
                     loss, parts = model.loss(batch)
                 (loss / cfg.train.grad_accum).backward()

@@ -37,7 +37,7 @@ from modlehr.prepare.dataset import SplitWriter
 from modlehr.prepare.text import build_text
 from modlehr.prepare.timeline import build_split
 from modlehr.prepare.values import apply_bins, fit_bins, fit_scaler, scale
-from modlehr.prepare.vocabulary import Vocabulary
+from modlehr.prepare.vocabulary import NO_EVENT, Vocabulary
 
 SPLITS = (meds.train_split, meds.tuning_split, meds.held_out_split)
 
@@ -171,6 +171,8 @@ def run_prepare(cfg: DataConfig, log=print) -> dict:
             subjects_per_token[token] = subjects_per_token.get(token, 0) + int(n)
         train_targets.update(frame.loc[frame["role"] == "target", "token"].unique())
     kept = {t for t, n in subjects_per_token.items() if n >= cfg.min_subjects_per_token}
+    if cfg.no_event_years is not None:
+        kept.add(NO_EVENT)  # inserted while training, never stored in a split
     targets = sorted(train_targets & kept)  # a kept token is in the training split, so this is every target
     vocab = Vocabulary.build(sorted(kept), targets)
     if stats is not None:

@@ -221,18 +221,55 @@ def collate(rows: list[dict]) -> dict[str, torch.Tensor]:
     return {k: torch.from_numpy(v) for k, v in out.items()}
 
 
-def random_windows(split: PreparedSplit, batch_size: int, max_len: int, rng: np.random.Generator) -> dict[str, torch.Tensor]:
-    """A training batch: random subjects, each cropped to a random window of at most max_len events."""
+def with_no_events(row: dict, token: int, years: float, rng: np.random.Generator, start: float, end: float,
+                   max_len: int) -> dict:
+    """Delphi-2M's "no event" tokens in one row: one at a random age every `years` on average, between
+    the row's first and last events and within follow-up [start, end]. Each is labelled like the event
+    before it, whose next target time is also the next one after it, nearer by the time between; then
+    the row keeps its last max_len events."""
+    ages = row["ages"]
+    lo, hi = max(float(ages[0]), start), min(float(ages[-1]), end)
+    n = rng.poisson((hi - lo) / years) if hi > lo else 0
+    if not n:
+        return row
+    at = np.sort(rng.uniform(lo, hi, n)).astype(np.float32)
+    j = np.searchsorted(ages, at, side="right")  # each goes before event j, after event j - 1
+    before = j - 1
+    new = {"tokens": token, "ages": at, "values": np.nan, "target": -1, "next_target": row["next_target"][before],
+           "dt": row["dt"][before] - (at - ages[before]), "loss_mask": True}
+    is_new = np.zeros(len(ages) + n, dtype=bool)
+    is_new[j + np.arange(n)] = True  # where np.insert puts them
+    out = {}
+    for k, v in row.items():
+        if k == "next_set":
+            out[k] = np.insert(v, j, v[before], axis=0)
+        elif k == "text":
+            notes = iter(v)
+            out[k] = [None if added else next(notes) for added in is_new]
+        else:
+            out[k] = np.insert(v, j, np.broadcast_to(np.asarray(new[k], dtype=v.dtype), (n,)))
+    return {k: v[-max_len:] for k, v in out.items()}
+
+
+def random_windows(split: PreparedSplit, batch_size: int, max_len: int, rng: np.random.Generator,
+                   no_event: tuple[int, float] | None = None) -> dict[str, torch.Tensor]:
+    """A training batch: random subjects, each cropped to a random window of at most max_len events.
+    no_event = (token, years) adds Delphi-2M's "no event" tokens (with_no_events)."""
     lengths = split.lengths()
     rows = []
     for i in rng.integers(0, len(split), batch_size):
         n = lengths[i]
         start = int(rng.integers(0, n - max_len + 1)) if n > max_len else 0
-        rows.append(split.subject(int(i), start, start + min(n, max_len)))
+        row = split.subject(int(i), start, start + min(n, max_len))
+        if no_event is not None:
+            row = with_no_events(row, *no_event, rng, float(split.follow_up_start[i]), float(split.follow_up_end[i]),
+                                 max_len)
+        rows.append(row)
     return collate(rows)
 
 
-def fixed_windows(split: PreparedSplit, batch_size: int, max_len: int, n_batches: int, seed: int = 0) -> list[dict[str, torch.Tensor]]:
+def fixed_windows(split: PreparedSplit, batch_size: int, max_len: int, n_batches: int, seed: int = 0,
+                  no_event: tuple[int, float] | None = None) -> list[dict[str, torch.Tensor]]:
     """The same windows every time, for comparable tuning losses during training."""
     rng = np.random.default_rng(seed)
-    return [random_windows(split, batch_size, max_len, rng) for _ in range(n_batches)]
+    return [random_windows(split, batch_size, max_len, rng, no_event) for _ in range(n_batches)]

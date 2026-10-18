@@ -75,7 +75,7 @@ With [uv](https://docs.astral.sh/uv/):
 git clone https://github.com/Jimmuji/modLEHR.git && cd modLEHR
 uv venv --python 3.13 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
-.venv/bin/python -m pytest          # 98 tests, about 20 seconds
+.venv/bin/python -m pytest          # 101 tests, about 20 seconds
 ```
 
 With plain pip: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
@@ -301,6 +301,12 @@ censored subjects are dropped. `controls: never` keeps every subject with no rec
 at all, censored or not, which is how Delphi-2M defines controls. Which one is in force changes the
 numbers, so it is written into `evaluate.json` and printed with the mean, and `modlehr baseline`
 reads the same setting.
+
+**"No event" tokens.** By default the score at a landmark is read at the last event before it,
+which can be years earlier, with the rates held constant since. `data.no_event_years: 5` adds
+Delphi-2M's answer: training inserts a "no event" token at a random age every five years on
+average, labelled with the next target from that age, and evaluation reads each landmark at one
+placed at the landmark age.
 
 **Calibration.** At each landmark, the predicted number of targets first occurring in (L, L + H] is
 compared with the number observed. The prediction sums, over targets the patient has not had yet,

@@ -69,6 +69,11 @@ class DataConfig:
     # it nothing could have been recorded, so earlier events carry no loss, and a landmark task needs the
     # subject followed by the landmark.
     follow_up_from: str = "first_event"
+    # Delphi-2M's "no event" tokens: training inserts one at a random age every this many years on
+    # average (Delphi-2M: 5), each labelled with the next target from that age, so the model learns
+    # rates at times with no event; evaluation and sampling then ask at a "no event" token placed at
+    # the landmark or start age. Off (null) by default.
+    no_event_years: float | None = None
 
 
 @dataclass
@@ -196,6 +201,8 @@ def check(cfg: Config) -> Config:
     landmarks = cfg.evaluate.landmarks
     if not isinstance(landmarks, list) or not all(isinstance(a, (int, float)) for a in landmarks):
         raise ValueError(f"evaluate.landmarks must be a list of ages, e.g. [40, 50, 60], not {landmarks!r}")
+    if cfg.data.no_event_years is not None and not cfg.data.no_event_years > 0:
+        raise ValueError(f"data.no_event_years must be positive, or null for none, not {cfg.data.no_event_years!r}")
     if not cfg.evaluate.horizon_years > 0:
         raise ValueError(f"evaluate.horizon_years must be positive, not {cfg.evaluate.horizon_years!r}")
     return cfg
