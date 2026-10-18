@@ -36,6 +36,11 @@ Fixes from a second review
 - The interval over seeds pairs the seeds two groups share (seeds 1 to 3 against 1 and 2 used to
   get none), and is one-sample only against a classical baseline. A single seeded model run was
   taken as a fixed number, which left out its own seed-to-seed variation
+- Follow-up ends at the last follow-up event the rules match, before `prepare` drops any. It used to
+  be computed after thinning, first-occurrence and rare-token filtering, so a thinned last
+  measurement ended follow-up up to `thin_years` early (2 years on Synthea, 3 months on full
+  MIMIC-IV), and on MIMIC-IV diagnoses a last stay that brought no new diagnosis ended it at
+  admission rather than discharge. Needs re-preparing
 
 Results
 - MIMIC-IV diagnoses, ten architectures over three seeds on the Alliance cluster Fir: every

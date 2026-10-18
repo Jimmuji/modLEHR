@@ -8,7 +8,8 @@ share their time with others. `next_target` keeps the first of them (for code th
 censored at the end of follow-up (next_target = -1, dt = years until then).
 
 Follow-up ends at the subject's last event of a rule with follow_up: true (all rules by default),
-and no later than death. Events after it (an outpatient measurement after the last admission, say)
+and no later than death, counting events that prepare drops later (thinned, repeated or rare ones),
+since they still show the subject was followed then. Events after it (an outpatient measurement after the last admission, say)
 stay in the input but carry no loss, since no outcome could have been recorded then. Only the last
 event of each distinct time carries a loss (loss_mask), so a prediction is always made after
 everything recorded at that moment has been seen.
@@ -43,7 +44,8 @@ def follow_up_ends(ages: np.ndarray, follows: np.ndarray, target: np.ndarray, of
 
 def build_split(frame: pd.DataFrame, vocab: Vocabulary) -> dict[str, np.ndarray]:
     """frame: one split, sorted by subject_id then age, with columns subject_id, token_id, age, value,
-    and optionally follow_up (bool, default true)."""
+    and optionally follow_up_end (per event, its subject's; prepare computes it before dropping any
+    event) or else follow_up (bool, default true), from which it is computed here."""
     subject = frame["subject_id"].to_numpy()
     subjects, starts = np.unique(subject, return_index=True)
     offsets = np.append(starts, len(frame)).astype(np.int64)
@@ -53,7 +55,10 @@ def build_split(frame: pd.DataFrame, vocab: Vocabulary) -> dict[str, np.ndarray]
     target_of = vocab.input_to_target[tokens].astype(np.int32)
     follows = frame["follow_up"].to_numpy(bool) if "follow_up" in frame else np.ones(len(frame), bool)
     death = vocab.targets.index(meds.death_code) if meds.death_code in vocab.targets else None
-    end_of = follow_up_ends(ages, follows, target_of, offsets, death)
+    if "follow_up_end" in frame:
+        end_of = frame["follow_up_end"].to_numpy(np.float32)[starts]
+    else:
+        end_of = follow_up_ends(ages, follows, target_of, offsets, death)
 
     n = len(frame)
     next_target = np.full(n, -1, dtype=np.int32)

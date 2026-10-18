@@ -193,3 +193,27 @@ def test_loss_counts_every_tied_target():
     assert abs(float(nll) - expected) < 1e-5
     single, _ = CompetingRiskHead.loss(log_rates, torch.tensor([[1]]), dt, mask)  # one target, as before
     assert abs(float(single) - (-np.log(0.2) + 1.2)) < 1e-5
+
+
+def test_follow_up_counts_events_that_prepare_drops(tmp_path):
+    """A contact shows the subject was followed then, even when prepare thins its measurement away,
+    drops its code as rare, or drops a diagnosis already recorded earlier (first occurrence)."""
+    from conftest import write_meds
+    from modlehr.config import DataConfig, EventRule
+
+    rows = []
+    for s in range(30):
+        rows += [(s, None, "GENDER//F", None), (s, 40.0, "DX//A", None), (s, 50.5, "LAB//1", 1.0),
+                 (s, 51.5, "LAB//1", 2.0)]  # one lab per 5 years is kept: 51.5 is thinned away
+    rows += [(0, 53.0, "LAB//RARE", 3.0),  # a contact whose only code is too rare to keep
+             (1, 54.0, "DX//A", None),     # a repeated diagnosis
+             (2, 55.0, "MEDS_DEATH", None), (2, 56.0, "LAB//RARE", 1.0)]  # nothing counts after death
+    cfg = DataConfig(meds_dir=str(write_meds(tmp_path / "meds", rows)), prepared_dir=str(tmp_path / "prepared"),
+                     min_subjects_per_token=5, value_mode="none",
+                     events=[EventRule(name="sex", role="static", prefix="GENDER//"),
+                             EventRule(name="death", role="target", codes=["MEDS_DEATH"]),
+                             EventRule(name="dx", role="target", prefix="DX//"),
+                             EventRule(name="labs", role="measurement", prefix="LAB//", thin_years=5)])
+    run_prepare(cfg, log=lambda *_: None)
+    end = open_split(cfg.prepared_dir, "train").follow_up_end
+    np.testing.assert_allclose(end[:4], [53.0, 54.0, 55.0, 51.5], atol=1e-4)
