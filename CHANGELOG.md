@@ -21,6 +21,11 @@ Follow-up from the first contact
   landmark; prepared splits store `follow_up_start`. Off by default, so prepared data and results
   do not change; `configs/experiment/mimic_iv_core_gpt_first_contact.yaml` runs it on MIMIC-IV
 
+Fixes
+- `modlehr convert synthea --raw-dir` reads the folder given to Synthea as `--exporter.baseDirectory`,
+  as the README's walkthrough does; it looked only in that folder and in chunk folders, not in the
+  `csv/` folder Synthea writes there, and stopped with "no Synthea CSV export found"
+
 Fixes from an external code review (all six of its hypotheses held up)
 - Targets recorded at the same time are all labels of that time. Before, only the first (in token
   order) was, so on MIMIC-IV, where every diagnosis of an admission is timed at its discharge,
