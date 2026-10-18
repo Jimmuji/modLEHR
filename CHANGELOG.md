@@ -52,6 +52,9 @@ Fixes from a second review
   takes 83 seconds instead of about 15 minutes. Same table (tested against the plain loop)
 - Histories read for a forward pass (landmark scores, baselines, `delphi`) skip the tied-target label
   sets, which made up most of the time: 1.0 instead of 3.6 seconds per landmark for 39,000 subjects
+- README, docs/design.md, docs/extending.md and docs/configuration.md describe the code as it is:
+  tied labels and follow-up, the marginal risk, calibration, both comparison intervals, the head
+  interface and `modlehr delphi`. `scipy`, imported directly, is a declared dependency
 
 Results
 - MIMIC-IV diagnoses, ten architectures over three seeds on the Alliance cluster Fir: every
@@ -101,6 +104,9 @@ Tracking
   works offline on compute nodes, with `wandb sync` afterwards
 
 Evaluation
+- `modlehr delphi`: Delphi-2M's own AUC (`evaluate_auc_pipeline`): cases predicted from just before
+  their diagnosis, controls who never have the disease, by sex and 5-year age band from 40 to 80,
+  with gaps of 0.1 day and one year, to set a model next to Delphi-2M's published numbers
 - Calibration counts the observed window from the landmark, (L, L + H]. It used to count H years
   from the last event before L, which on MIMIC-IV is often years earlier (the sex token at age 0
   for most subjects), so the window was mostly already known to be empty: expected over observed

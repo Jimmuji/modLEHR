@@ -12,6 +12,7 @@ dependencies = [
     "meds>=0.4",
     "pyyaml>=6",
     "scikit-learn>=1.4",
+    "scipy>=1.11",
 ]
 
 [project.optional-dependencies]

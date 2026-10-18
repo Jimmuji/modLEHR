@@ -48,12 +48,13 @@ raw records ──convert──> MEDS ──prepare──> timelines ──train
 | `modlehr prepare` | Select events, compute ages, group disease codes, build vocabularies, scale or bin values, attach labels |
 | `modlehr info` | Summarize a prepared dataset: subjects, events, tokens and targets per rule |
 | `modlehr train` | Fit the model; keep the checkpoint with the lowest tuning loss |
-| `modlehr evaluate` | AUC for each outcome at landmark ages, and the held-out negative log-likelihood |
+| `modlehr evaluate` | AUC for each outcome at landmark ages, calibration, and the held-out negative log-likelihood |
 | `modlehr baseline` | Logistic regression and gradient boosting on exactly the same prediction task |
 | `modlehr generate` | Sample future outcomes for one patient |
 | `modlehr simulate` | Sample one future per held-out patient, cut at the end of the real record, and compare incidence by age with the records |
+| `modlehr delphi` | Delphi-2M's own AUC (by sex and 5-year age band, against patients who never have the disease), to set a model next to Delphi-2M's published numbers |
 | `modlehr run` | `prepare` (only if the data config or the MEDS files changed), `train` and `evaluate` in one command |
-| `modlehr compare` | Mean AUC of several runs and the paired difference against the first, averaging over seeds |
+| `modlehr compare` | Mean AUC of several runs and the paired difference against the first, averaging over seeds, with 95% intervals over pairs and over seeds |
 
 ## Installation
 
@@ -66,7 +67,7 @@ With [uv](https://docs.astral.sh/uv/):
 git clone https://github.com/Jimmuji/modLEHR.git && cd modLEHR
 uv venv --python 3.13 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
-.venv/bin/python -m pytest          # 47 tests, about 10 seconds
+.venv/bin/python -m pytest          # 88 tests, about 20 seconds
 ```
 
 With plain pip: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
@@ -83,11 +84,13 @@ a discharge note each) runs every stage on a laptop CPU in about 16 seconds.
 $ modlehr convert toy --out data/toy_meds
 $ modlehr run --config configs/experiment/toy_gpt.yaml
 [prepare] vocabulary 11 tokens, 4 targets → runs/prepared/toy
-[train] best tuning loss 3.5744 → runs/toy_gpt/best.pt
-[evaluate] mean AUC 0.614 (95% CI 0.473 to 0.754) over 10 target and landmark pairs
+[train] best tuning loss 3.6908 → runs/toy_gpt/best.pt
+[evaluate] mean AUC 0.613 (95% CI 0.472 to 0.753) over 10 target and landmark pairs, controls=at_risk, risk=marginal
 $ modlehr baseline --config configs/experiment/toy_gpt.yaml
-[baseline] logistic: mean AUC 0.492 (95% CI 0.463 to 0.522) over 10 pairs → runs/toy_gpt_logistic/evaluate.csv
+[baseline] logistic: mean AUC 0.487 (95% CI 0.456 to 0.517) over 10 pairs → runs/toy_gpt_logistic/evaluate.csv
 ```
+
+The last digits differ a little between machines and PyTorch versions.
 
 The toy notes say "polyuria" for subjects who will develop disease A, so the transformer, which reads
 note words through its text encoding, beats a logistic regression that sees only codes. Nothing in
@@ -231,10 +234,13 @@ event. It does five things, all set in the data config (full reference in
    quantile (`LOINC//4548-4//Q1`); `continuous` keeps the number, scaled per measurement, for the
    value encoding to read; `none` drops it.
 5. **Build vocabularies and labels.** A token is kept if at least `min_subjects_per_token`
-   training patients have it. Every event is labeled with the next target that comes strictly
-   later, and the years until it; if none follows, the event is censored at the end of the
-   record. Only the last event at each distinct time carries a loss, so the model predicts after
-   seeing everything recorded at that moment.
+   training patients have it. Every event is labeled with the next time strictly later at which a
+   target is recorded: all the targets recorded then (a discharge often brings several diagnoses
+   at once), and the years until it. If none follows, the event is censored at the end of
+   follow-up: the subject's last event of a rule with `follow_up: true` (every rule by default),
+   and no later than death. Events after follow-up stay inputs but carry no loss. Only the last
+   event at each distinct time carries a loss, so the model predicts after seeing everything
+   recorded at that moment.
 
 What the labels look like for one Synthea patient (subject 296, 220 events after prepare):
 
@@ -271,15 +277,15 @@ pass in bfloat16 and `train.grad_accum: k` adds up the gradients of k batches pe
 ### evaluate
 
 **AUC at landmark ages.** For a landmark age L, a horizon H and a target k, among patients whose
-record covers L: a case has a first k in (L, L + H]; a control has no k by L + H and a record
-that reaches L + H; patients who already had k, and patients whose record ends earlier without k,
-are left out. The score is the model's probability of k within H from everything up to L. One
+record starts by L and who are followed past L: a case has a first k in (L, L + H]; a control has
+no k by L + H and is followed to L + H; patients who already had k, and patients whose follow-up
+ends earlier without k, are left out. The score is the model's probability of k within H from everything up to L. One
 AUC per (target, landmark) pair with at least `min_cases` cases and controls; the summary is the
 mean over pairs, with an approximate 95% interval. The defaults are landmarks 40, 50, 60 and 70
 and a 5-year horizon.
 
 `evaluate.controls` picks who the controls are. The default `at_risk` is the paragraph above: a
-control must still be under observation at L + H, so a control may develop the disease later, and
+control must still be followed at L + H, so a control may develop the disease later, and
 censored subjects are dropped. `controls: never` keeps every subject with no record of the disease
 at all, censored or not, which is how Delphi-2M defines controls. Which one is in force changes the
 numbers, so it is written into `evaluate.json` and printed with the mean, and `modlehr baseline`
@@ -339,6 +345,27 @@ This checks what AUC cannot: whether sampled futures look like real ones. Here t
 281 deaths where the records hold 223, so sampled follow-up ends early, and it generates too few
 of every other outcome.
 
+### delphi
+
+Scores a model the way Delphi-2M scores itself (`evaluate_auc_pipeline` in its code), so its
+numbers can be set next to the ones Delphi-2M published. For each disease, every patient whose
+first record of it falls within follow-up is a case, predicted from the last event strictly before
+the diagnosis minus a gap; controls are patients who never have the disease, each predicted from
+the last event before one of their own event times minus the gap. AUCs are taken by sex and by
+5-year band of the age at prediction, from 40 to 80, with one prediction per patient per band, and
+averaged over bands per disease and sex. The gaps are 0.1 day and one year by default
+(`--gap-days`), Delphi-2M's two settings.
+
+```console
+$ modlehr delphi --config configs/experiment/toy_gpt.yaml
+[delphi] gap 0.1 days: female 0.611 over 4 diseases, male 0.639 over 4 diseases → runs/toy_gpt/evaluate_delphi_gap0.1d.csv
+```
+
+This is not the main task: a case's prediction point is chosen by when the diagnosis happened, and
+with a short gap it is usually the admission of the same hospital stay, so the score mixes
+forecasting with recognising a patient already in hospital. Report it next to the landmark AUC,
+not in its place.
+
 ## Running and comparing experiments
 
 ```bash
@@ -357,7 +384,10 @@ modlehr compare runs/synthea_gpt_s1 runs/synthea_gpt_s2 runs/synthea_gpt_s3 \
 
 `--seed N` sets `train.seed` and adds `_sN` to the run directory. `modlehr compare` prints, for
 each run against the first: mean AUC, held-out negative log-likelihood, and the mean paired AUC
-difference over the pairs both scored, with a 95% interval.
+difference over the pairs both scored, with two 95% intervals. The one over pairs leaves out how
+much a run moves with its seed and is too narrow to decide between models. The one over seeds is
+the one to read: it pairs the seeds both runs have (at least two), or, against a classical
+baseline, uses the other run's seeds alone. A single seeded model run gets none.
 
 `scripts/compare_synthea.sh` trains the baseline and every variant over seeds 1 to 3, fits the
 classical baselines, and prints the comparison. Each run takes about 7 minutes on Apple MPS, so the
@@ -419,10 +449,13 @@ to earlier events, never to later ones, and never to padding.
 **Output head (`competing_risk`).** One rate per target per year. Between events each target k
 has a constant rate λ_k; the next target is k after Δt years with likelihood
 λ_k · exp(−Λ Δt), where Λ is the sum of all rates, and a stretch with no target until the record
-ends has likelihood exp(−Λ Δt). The loss is the negative log of these. It is the same likelihood
-as Delphi-2M's next-event and waiting-time losses (Shmatko et al., *Nature* 2025), written as one
-expression, with the end of the record handled as censoring. Rates start at each target's
-training-set rate. The risk of k within H years is (λ_k / Λ)(1 − exp(−Λ H)).
+ends has likelihood exp(−Λ Δt). Several targets recorded at the same time (a set S) have
+likelihood ∏_{k in S} λ_k · exp(−Λ Δt). The loss is the negative log of these. With one target at
+a time it is the same likelihood as Delphi-2M's next-event and waiting-time losses (Shmatko et
+al., *Nature* 2025), written as one expression, with the end of follow-up handled as censoring.
+Rates start at each target's training-set rate. The risk of k within H years, the score AUC ranks
+by, is 1 − exp(−λ_k H) (`evaluate.risk: marginal`); `next_event` gives (λ_k / Λ)(1 − exp(−Λ H)),
+the probability that k is the next target.
 
 Every part is registered by name and picked in `configs/model/`:
 
@@ -652,7 +685,8 @@ src/modlehr/
   prepare/         event selection, target grouping, vocabularies, values, labels, batches
   model/           input head, swappable layers, output heads, the assembled model
   train/           training loop
-  evaluate/        landmark task, AUC and likelihood, classical baselines, run comparison
+  evaluate/        landmark task, AUC, calibration and likelihood, classical baselines, Delphi-2M's AUC,
+                   run comparison
   generate/        sampling futures
   registry.py      name → part, for everything that can be swapped
   config.py        experiment configuration and command-line overrides

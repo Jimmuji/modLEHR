@@ -390,3 +390,13 @@ def test_delphi_band_aucs_match_a_plain_loop():
                     rows.append((name, sx, int(AGE_BANDS[k]), len(case), len(control),
                                  roc_auc_score(y, np.r_[case, control])))
     assert len(rows) > 50 and [tuple(r) for r in table.itertuples(index=False)] == rows
+
+
+def test_readme_lists_every_command():
+    """The README's command table names every command the parser accepts."""
+    import argparse
+
+    commands = next(a for a in build_parser()._actions if isinstance(a, argparse._SubParsersAction)).choices
+    readme = (Path(__file__).resolve().parents[1] / "README.md").read_text()
+    table = readme[readme.index("| Command |"):readme.index("## Installation")]
+    assert [c for c in commands if f"`modlehr {c}" not in table] == []

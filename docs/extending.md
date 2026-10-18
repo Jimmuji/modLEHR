@@ -105,12 +105,17 @@ four methods, so a new head has to provide all of them:
 |---|---|---|
 | `forward(h)` | everything | the head's output for every event |
 | `loss(out, next_target, dt, mask)` | training, `evaluate` likelihood | `(mean NLL over masked events, dict of named parts)` |
-| `risk(out, horizon_years)` | `evaluate` | `[..., n_targets]` probability of each target within the horizon |
+| `risk(out, horizon_years, kind)` | `evaluate` | `[..., n_targets]` probability of each target within the horizon; `kind` is `evaluate.risk` (`marginal` or `next_event`) |
 | `sample(out, generator)` | `generate` | `(target index, years until it)` |
 
-`next_target` is `-1` for a censored stretch; `dt` is the years until the next target, or until
-the end of the record. An optional `init_rates(counts, exposure_years)` is called before
-training with the training-set count of each target and the total years of follow-up.
+`next_target` is `[B, T]` (one target, `-1` for a censored stretch) or `[B, T, K]` (every target
+recorded at the next target time, `-1` padded, all `-1` for a censored stretch); training passes
+the second when the prepared data has it. `dt` is the years until the next target, or until the
+end of follow-up. Two methods are optional: `init_rates(counts, exposure_years)` is called before
+training with the training-set count of each target and the total years in training, and
+`observed_risk(out, horizon_years, death)`, the probability that each target is recorded within
+the horizon (before death, the target index `death` or `None`), is what calibration compares with
+the records; without it calibration uses `risk(out, horizon_years, "marginal")`.
 
 ### A new target grouping
 

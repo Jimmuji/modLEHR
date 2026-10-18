@@ -12,11 +12,11 @@ compared with the number observed. The prediction sums, over the targets a patie
 the probability that each is recorded in the window: it has to come before death, since nothing is
 recorded after it (the head's observed_risk). This comes from the head's rates whatever
 evaluate.risk is; that setting picks the AUC score only. The window starts at L even when the last
-event is years earlier. Patients
-whose follow-up ends before L + H are not dropped, which would leave the observed numbers too high:
-each patient whose window is fully observed (followed to L + H, or dead within it) is weighted by
-1 / P(still followed), estimated by Kaplan-Meier from the follow-up end times (inverse probability
-of censoring weights), and the weighted counts are averaged over everyone. Reported as expected
+event is years earlier. Patients whose follow-up ends before L + H are not dropped, which would
+leave the observed numbers too high: each patient whose window is fully observed (followed to
+L + H, or dead within it) is weighted by 1 / P(still followed), estimated by Kaplan-Meier from the
+follow-up end times (inverse probability of censoring weights), and the weighted counts are
+averaged over everyone. Reported as expected
 over observed (1 is calibrated), overall and per landmark, and as a table of predicted against
 observed per (patient, target) by risk bin.
 

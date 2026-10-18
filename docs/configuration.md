@@ -19,7 +19,9 @@ train:
    One exception: a file that sets `data.target_grouping` replaces the inherited
    `target_grouping_options` instead of merging into them, since they are the previous
    grouping's mapping files.
-3. Unknown keys are an error, so a typo fails at once instead of being ignored.
+3. Unknown keys and sections are an error, so a typo fails at once instead of being ignored. So
+   are values a key does not take (`evaluate.risk`, `evaluate.controls`, `data.value_mode`,
+   `train.precision`), checked when the config loads rather than at the stage that reads them.
 4. Paths *inside* a section (`meds_dir`, `prepared_dir`, `out_dir`) are relative to the directory
    the command runs from. Run every command from the repository root.
 
@@ -194,8 +196,8 @@ step, train and tuning loss, the loss parts, seconds), `best.pt`, `last.pt`, and
 | `landmarks` | `[40, 50, 60, 70]` | Ages, in years, at which predictions are made |
 | `horizon_years` | `5.0` | A case has the outcome within this many years after the landmark |
 | `min_cases` | `20` | A (target, landmark) pair is scored only with at least this many cases and this many controls |
-| `controls` | `at_risk` | Who counts as a control: `at_risk` keeps subjects with no outcome by L + H whose record reaches L + H, and leaves out the rest as censored; `never` keeps every subject with no outcome anywhere in the record, which is Delphi-2M's definition. AUCs under the two are not comparable, so the one used is written into `evaluate.json` |
-| `risk` | `marginal` | The score each target gets: `marginal`, P(k first occurs within the horizon) = 1 − exp(−λ_k H), each target on its own hazard (what the loss fits when targets share their time); or `next_event`, P(k is the next target and comes within the horizon), one target at a time, which understates each target when many are recorded together. The one used is written into `evaluate.json` |
+| `controls` | `at_risk` | Who counts as a control: `at_risk` keeps subjects with no outcome by L + H who are followed to L + H (see `follow_up`), and leaves out the rest as censored; `never` keeps every subject with no outcome anywhere in follow-up, which is Delphi-2M's definition. AUCs under the two are not comparable, so the one used is written into `evaluate.json` |
+| `risk` | `marginal` | The score each target gets: `marginal`, P(k first occurs within the horizon) = 1 − exp(−λ_k H), each target on its own hazard (what the loss fits when targets share their time); or `next_event`, P(k is the next target and comes within the horizon), one target at a time, which understates each target when many are recorded together. The one used is written into `evaluate.json`. Calibration does not depend on it |
 | `split` | `held_out` | Which split to score |
 | `batch_size` | `256` | Timelines per forward pass |
 | `likelihood` | `true` | Also report the negative log-likelihood per prediction on the split |
