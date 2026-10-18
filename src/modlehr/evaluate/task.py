@@ -77,11 +77,12 @@ def split_first_ages(split: PreparedSplit, vocab: Vocabulary) -> np.ndarray:
 
 
 def history_before(split: PreparedSplit, i: int, landmark: float, max_len: int | None = None) -> dict[str, np.ndarray]:
-    """Subject i's events at or before the landmark; the last max_len of them if max_len is set."""
+    """Subject i's events at or before the landmark; the last max_len of them if max_len is set. Inputs
+    only: no label sets."""
     a, b = split.offsets[i], split.offsets[i + 1]
     n = int(np.searchsorted(split.arrays["ages"][a:b], landmark, side="right"))
     start = 0 if max_len is None else max(0, n - max_len)
-    return split.subject(int(i), start, n)
+    return split.subject(int(i), start, n, labels=False)
 
 
 def summarize(result: pd.DataFrame) -> dict:

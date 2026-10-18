@@ -71,7 +71,7 @@ def log_rates_at(model, split: PreparedSplit, needed: dict[int, np.ndarray], bat
     jobs.sort(key=lambda j: j[2] - j[1])
     for b in range(0, len(jobs), batch_size):
         chunk = jobs[b:b + batch_size]
-        rows = [split.subject(s, a, z) for s, a, z, _ in chunk]
+        rows = [split.subject(s, a, z, labels=False) for s, a, z, _ in chunk]
         log_rates = model(to_device(collate(rows), device)).float()
         for j, (s, a, _, events) in enumerate(chunk):
             out[s].append((events, log_rates[j, torch.as_tensor(events - a, device=device)].cpu().numpy()))

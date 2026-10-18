@@ -56,13 +56,14 @@ class PreparedSplit:
     def lengths(self) -> np.ndarray:
         return np.diff(self.offsets)
 
-    def subject(self, i: int, start: int = 0, stop: int | None = None) -> dict:
+    def subject(self, i: int, start: int = 0, stop: int | None = None, labels: bool = True) -> dict:
         """Events start:stop of subject i. row["next_set"] [n, K] holds every target of the next target
-        time (when the split has `target`). With text, row["text"] lists each event's note words (or None)."""
+        time (when the split has `target` and labels is true; a model's forward pass does not need it).
+        With text, row["text"] lists each event's note words (or None)."""
         a, b = self.offsets[i], self.offsets[i + 1]
         stop = (b - a) if stop is None else stop
         row = {k: np.asarray(self.arrays[k][a + start:a + stop]) for k in ARRAYS if k in self.arrays}
-        if "target" in self.arrays:
+        if labels and "target" in self.arrays:
             row["next_set"] = next_target_sets(np.asarray(self.arrays["ages"][a:b]), np.asarray(self.arrays["target"][a:b]),
                                                float(self.follow_up_end[i]), start, stop)
         if self.has_text:

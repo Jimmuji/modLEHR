@@ -50,6 +50,8 @@ Fixes from a second review
 - `modlehr delphi` sorts cases and controls by sex and age band once instead of masking every row
   for each (disease, sex, band): at MIMIC-IV size (1,018 targets, a million case rows) the AUC table
   takes 83 seconds instead of about 15 minutes. Same table (tested against the plain loop)
+- Histories read for a forward pass (landmark scores, baselines, `delphi`) skip the tied-target label
+  sets, which made up most of the time: 1.0 instead of 3.6 seconds per landmark for 39,000 subjects
 
 Results
 - MIMIC-IV diagnoses, ten architectures over three seeds on the Alliance cluster Fir: every

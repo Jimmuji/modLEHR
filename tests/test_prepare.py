@@ -238,3 +238,16 @@ def test_shards_without_birth_events_are_skipped(tmp_path):
                      value_mode="none", events=[EventRule(name="dx", role="target", prefix="DX//")])
     meta = run_prepare(cfg, log=lambda *_: None)
     assert meta["summary"]["train"]["subjects"] == 5
+
+
+def test_inputs_without_label_sets_are_the_same_inputs(tiny_config):
+    """Evaluation reads histories with labels=False, which skips building the tied-target sets."""
+    from modlehr.evaluate.task import history_before
+
+    run_prepare(tiny_config.data, log=lambda *_: None)
+    split = open_split(tiny_config.data.prepared_dir, "held_out")
+    for i in range(len(split)):
+        full, inputs = split.subject(i, 2, 9), split.subject(i, 2, 9, labels=False)
+        assert "next_set" in full and "next_set" not in inputs
+        assert all(np.array_equal(full[k], inputs[k], equal_nan=True) for k in inputs)
+    assert "next_set" not in history_before(split, 0, 60.0)
