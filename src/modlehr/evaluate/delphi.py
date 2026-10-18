@@ -83,6 +83,44 @@ def log_rates_at(model, split: PreparedSplit, needed: dict[int, np.ndarray], bat
     return result
 
 
+def band_aucs(targets: list[str], first: np.ndarray, sex: np.ndarray, cases: tuple, controls: tuple) -> pd.DataFrame:
+    """One AUC per (target, sex, age band) with at least MIN_PER_BAND cases and controls.
+
+    first: [n_subjects, n_targets] age at each first target; sex: [n_subjects] name. cases: (subject,
+    target, band, score) per case; controls: (subject, band, [n, n_targets] scores) per control
+    prediction point. A control counts for the targets its subject never has. Cases and controls are
+    sorted by sex and band once, so each target reads only its own rows.
+    """
+    k_subject, k_target, k_band, k_score = cases
+    c_subject, c_band, c_rates = controls
+    names, sex_code = np.unique(sex, return_inverse=True)
+    n_groups = len(names) * len(AGE_BANDS)  # group = sex, then band: the order rows are written in
+    c_group = sex_code[c_subject] * len(AGE_BANDS) + c_band
+    c_order = np.argsort(c_group, kind="stable")
+    c_bounds = np.searchsorted(c_group[c_order], np.arange(n_groups + 1))
+    k_group = sex_code[k_subject] * len(AGE_BANDS) + k_band
+    k_order = np.lexsort((k_group, k_target))
+    t_bounds = np.searchsorted(k_target[k_order], np.arange(len(targets) + 1))
+    rows = []
+    for t, name in enumerate(targets):
+        mine = k_order[t_bounds[t]:t_bounds[t + 1]]
+        if len(mine) < MIN_PER_BAND:
+            continue
+        never = np.isinf(first[c_subject, t])
+        g_bounds = np.searchsorted(k_group[mine], np.arange(n_groups + 1))
+        for g in np.flatnonzero(np.diff(g_bounds) >= MIN_PER_BAND):
+            case_scores = k_score[mine[g_bounds[g]:g_bounds[g + 1]]]
+            pool = c_order[c_bounds[g]:c_bounds[g + 1]]
+            control_scores = c_rates[pool[never[pool]], t]
+            if len(control_scores) < MIN_PER_BAND:
+                continue
+            y = np.r_[np.ones(len(case_scores)), np.zeros(len(control_scores))]
+            rows.append({"target": name, "sex": names[g // len(AGE_BANDS)], "age_band": int(AGE_BANDS[g % len(AGE_BANDS)]),
+                         "cases": len(case_scores), "controls": len(control_scores),
+                         "auc": roc_auc_score(y, np.r_[case_scores, control_scores])})
+    return pd.DataFrame(rows, columns=["target", "sex", "age_band", "cases", "controls", "auc"])
+
+
 def delphi_auc(cfg: Config, checkpoint: str | Path, gap_days: float, out_csv: str | Path | None = None,
                seed: int = 0, log=print) -> pd.DataFrame:
     from modlehr.evaluate.run import load_model
@@ -136,7 +174,6 @@ def delphi_auc(cfg: Config, checkpoint: str | Path, gap_days: float, out_csv: st
     c_rows = [(s, k) for s in range(len(offsets) - 1) for k in np.flatnonzero(control_event[s] >= 0)]
     c_subject = np.array([s for s, _ in c_rows], dtype=int)
     c_band = np.array([k for _, k in c_rows], dtype=int)
-    c_sex = sex[c_subject] if len(c_rows) else np.array([], dtype=object)
     c_rates = np.stack([rate(s, control_event[s, k]) for s, k in c_rows]) if c_rows else np.zeros((0, len(vocab.targets)))
     cases = [(s, t, e) for s, items in case_event.items() for t, e in items]
     k_subject = np.array([s for s, _, _ in cases], dtype=int)
@@ -144,21 +181,7 @@ def delphi_auc(cfg: Config, checkpoint: str | Path, gap_days: float, out_csv: st
     k_band = band_of(ages_all[offsets[k_subject] + np.array([e for _, _, e in cases], dtype=int)]) if cases else np.array([], int)
     k_score = np.array([rate(s, e)[t] for s, t, e in cases]) if cases else np.array([])
 
-    rows = []
-    for t, name in enumerate(vocab.targets):
-        mine = k_target == t
-        never = np.isinf(first[c_subject, t])
-        for sx in np.unique(sex):
-            for k in range(len(AGE_BANDS)):
-                case_scores = k_score[mine & (k_band == k) & (sex[k_subject] == sx)]
-                control_scores = c_rates[never & (c_band == k) & (c_sex == sx), t]
-                if len(case_scores) < MIN_PER_BAND or len(control_scores) < MIN_PER_BAND:
-                    continue
-                y = np.r_[np.ones(len(case_scores)), np.zeros(len(control_scores))]
-                rows.append({"target": name, "sex": sx, "age_band": int(AGE_BANDS[k]), "cases": len(case_scores),
-                             "controls": len(control_scores),
-                             "auc": roc_auc_score(y, np.r_[case_scores, control_scores])})
-    by_band = pd.DataFrame(rows, columns=["target", "sex", "age_band", "cases", "controls", "auc"])
+    by_band = band_aucs(vocab.targets, first, sex, (k_subject, k_target, k_band, k_score), (c_subject, c_band, c_rates))
     per_disease = by_band.groupby(["target", "sex"]).agg(auc=("auc", "mean"), bands=("auc", "size"),
                                                          cases=("cases", "sum")).reset_index()
     summary = {"gap_days": gap_days, "split": cfg.evaluate.split, "checkpoint": str(checkpoint),

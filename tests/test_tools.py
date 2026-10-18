@@ -358,3 +358,35 @@ def test_delphi_auc_runs_end_to_end(tiny_config):
     summary = json.loads((Path(tiny_config.train.out_dir) / "evaluate_delphi_gap0.1d.json").read_text())
     assert len(table) and table["auc"].between(0, 1).all() and set(table["sex"]) <= {"female", "male", "all"}
     assert summary["gap_days"] == 0.1 and 0 < summary["mean_auc"] < 1
+
+
+def test_delphi_band_aucs_match_a_plain_loop():
+    """band_aucs reads each target's rows from sorted cases and controls; a plain loop over every
+    (target, sex, band), masking all rows each time, gives the same table."""
+    from sklearn.metrics import roc_auc_score
+
+    from modlehr.evaluate.delphi import AGE_BANDS, MIN_PER_BAND, band_aucs
+
+    rng = np.random.default_rng(0)
+    n_subjects, n_targets, n_cases, n_controls = 300, 6, 900, 700
+    targets = [f"T{t}" for t in range(n_targets)]
+    first = np.where(rng.random((n_subjects, n_targets)) < 0.3, 50.0, np.inf)
+    sex = np.where(rng.random(n_subjects) < 0.5, "female", "male").astype(object)
+    k_subject, k_target = rng.integers(0, n_subjects, n_cases), rng.integers(0, n_targets, n_cases)
+    k_band, k_score = rng.integers(0, len(AGE_BANDS), n_cases), rng.normal(size=n_cases)
+    c_subject, c_band = rng.integers(0, n_subjects, n_controls), rng.integers(0, len(AGE_BANDS), n_controls)
+    c_rates = rng.normal(size=(n_controls, n_targets))
+    table = band_aucs(targets, first, sex, (k_subject, k_target, k_band, k_score), (c_subject, c_band, c_rates))
+
+    rows = []
+    for t, name in enumerate(targets):
+        never = np.isinf(first[c_subject, t])
+        for sx in np.unique(sex):
+            for k in range(len(AGE_BANDS)):
+                case = k_score[(k_target == t) & (k_band == k) & (sex[k_subject] == sx)]
+                control = c_rates[never & (c_band == k) & (sex[c_subject] == sx), t]
+                if len(case) >= MIN_PER_BAND and len(control) >= MIN_PER_BAND:
+                    y = np.r_[np.ones(len(case)), np.zeros(len(control))]
+                    rows.append((name, sx, int(AGE_BANDS[k]), len(case), len(control),
+                                 roc_auc_score(y, np.r_[case, control])))
+    assert len(rows) > 50 and [tuple(r) for r in table.itertuples(index=False)] == rows

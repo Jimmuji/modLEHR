@@ -47,6 +47,9 @@ Fixes from a second review
   `evaluate.horizon_years`, `data.value_mode` and `train.precision`. A misspelt `evaluate.risk` used
   to fail only after `modlehr run` had trained. A bad event rule names the rule and its unknown or
   missing keys
+- `modlehr delphi` sorts cases and controls by sex and age band once instead of masking every row
+  for each (disease, sex, band): at MIMIC-IV size (1,018 targets, a million case rows) the AUC table
+  takes 83 seconds instead of about 15 minutes. Same table (tested against the plain loop)
 
 Results
 - MIMIC-IV diagnoses, ten architectures over three seeds on the Alliance cluster Fir: every
