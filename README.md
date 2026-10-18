@@ -452,61 +452,64 @@ MIMIC-IV 3.1 patients, admissions and diagnoses (`modlehr convert mimic-iv-core`
 Targets are ICD-10 three-character categories, with ICD-9 codes mapped through the CMS GEMs: 1,017
 diagnoses and death. Landmarks 40 to 80, a 2-year horizon, 1,062 (target, landmark) pairs on 73,083
 held-out patients. Each transformer is 256 wide with 6 layers and 512-event windows, trained for
-20,000 steps at batch 64 with seeds 1, 2 and 3 on the Alliance cluster Fir, three seeds per 40G H100
-slice (`scripts/fir/compare.sbatch`, about 30 minutes per model; MoE 48). Differences are paired
-over the 1,062 pairs after averaging each pair's AUC over the seeds.
+20,000 steps at batch 64 with seeds 1 to 5 on the Alliance cluster Fir, one run per 10G H100 slice
+(about 30 minutes each). Risk is each target's own probability within the horizon
+(`evaluate.risk: marginal`). Differences are paired over the 1,062 pairs; the interval is over
+seeds (`modlehr compare`), which is the one that decides whether two models differ.
 
-| Run | Parameters | Mean AUC (seeds 1, 2, 3) | Difference | Held-out NLL |
-|---|---|---|---|---|
-| Plain GPT | 5.34M | 0.665 (0.665, 0.668, 0.664) | | 3.361 |
-| Mixture of experts (`moe`) | 8.48M | 0.667 (0.667, 0.667, 0.666) | +0.0012 (+0.0002 to +0.0022) | 3.334 |
-| Sliding window over 5 years (`local_age`) | 5.34M | 0.666 (0.667, 0.669, 0.663) | +0.0007 (−0.0009 to +0.0023) | 3.370 |
-| Query and key normalization (`qk_norm`) | 5.34M | 0.666 (0.666, 0.668, 0.664) | +0.0003 (−0.0005 to +0.0011) | 3.340 |
-| Multi-head latent attention (`mla`) | 4.85M | 0.666 (0.665, 0.667, 0.666) | +0.0002 (−0.0007 to +0.0011) | 3.348 |
-| RMSNorm (`rmsnorm`) | 5.34M | 0.666 (0.667, 0.666, 0.664) | +0.0002 (−0.0009 to +0.0012) | 3.351 |
-| Rotary over age (`rope_age`) | 5.34M | 0.664 (0.667, 0.665, 0.661) | −0.0010 (−0.0021 to +0.0000) | 3.343 |
-| ALiBi over age (`alibi_age`) | 5.34M | 0.664 (0.666, 0.666, 0.660) | −0.0013 (−0.0023 to −0.0003) | 3.342 |
-| Grouped-query attention (`gqa`) | 4.94M | 0.664 (0.664, 0.667, 0.660) | −0.0018 (−0.0029 to −0.0007) | 3.352 |
-| SwiGLU feed-forward (`swiglu`) | 5.33M | 0.663 (0.663, 0.665, 0.660) | −0.0026 (−0.0036 to −0.0016) | 3.341 |
-| Logistic regression, same inputs | | 0.653 | −0.0123 (−0.0148 to −0.0097) | |
+| Run | Parameters | Mean AUC (range over seeds) | Difference, 95% CI over seeds |
+|---|---|---|---|
+| Plain GPT | 5.34M | 0.676 (0.676 to 0.677) | |
+| Rotary over age (`rope_age`) | 5.34M | 0.677 (0.676 to 0.677) | +0.0006 (−0.0001 to +0.0012) |
+| RMSNorm (`rmsnorm`) | 5.34M | 0.676 (0.676 to 0.677) | +0.0001 (−0.0008 to +0.0010) |
+| Grouped-query attention (`gqa`) | 4.94M | 0.676 (0.676 to 0.677) | +0.0000 (−0.0008 to +0.0008) |
+| Query and key normalization (`qk_norm`) | 5.34M | 0.676 (0.676 to 0.677) | +0.0000 (−0.0009 to +0.0010) |
+| ALiBi over age (`alibi_age`) | 5.34M | 0.676 (0.676 to 0.677) | −0.0001 (−0.0012 to +0.0010) |
+| SwiGLU feed-forward (`swiglu`) | 5.33M | 0.676 (0.676 to 0.676) | −0.0001 (−0.0008 to +0.0006) |
+| Sliding window over 5 years (`local_age`) | 5.34M | 0.676 (0.674 to 0.677) | −0.0003 (−0.0020 to +0.0013) |
+| Multi-head latent attention (`mla`) | 4.85M | 0.676 (0.675 to 0.677) | −0.0003 (−0.0007 to +0.0001) |
+| Mixture of experts (`moe`) | 8.48M | 0.676 (0.675 to 0.676) | −0.0004 (−0.0011 to +0.0004) |
+| Logistic regression, same inputs | | 0.653 | −0.0231 (−0.0237 to −0.0226) |
 
 How to read it:
 
-- **On real records the transformer beats the classical model**, by 0.012 (0.010 to 0.015), the
-  reverse of Synthea below. Under Delphi-2M's controls (`controls: never`) the plain GPT scores
-  0.655 over the three seeds and logistic regression 0.632.
-- **Swapping in parts from recent language models barely moves AUC.** Every difference is under
-  0.003, smaller than the spread between seeds of one model (0.664 to 0.668 for the plain GPT).
-  Four intervals exclude zero (MoE above, ALiBi, GQA and SwiGLU below), none by more than 0.003;
-  with nine comparisons, read them as weak.
-- **One seed misleads.** The Mac's seed-1 runs, with the same settings, had SwiGLU and the 5-year
-  window 0.005 ahead of the plain GPT; over three seeds SwiGLU is 0.003 behind it.
-- **The likelihood separates the variants more than AUC does.** All but the 5-year window have a
-  lower held-out NLL than the plain GPT, the mixture of experts lowest (3.334 against 3.361).
-- **The plain GPT predicts too few next outcomes:** expected over observed within two years of the
-  landmark is 0.75 to 0.76 over the three seeds. Everyone in the task has a later hospital stay,
-  so their observed rates are higher than in the training records as a whole.
+- **On real records the transformer beats the classical model** by 0.023, steadily over five seeds;
+  on Synthea, below, it was the reverse. Under Delphi-2M's controls (`controls: never`) the plain
+  GPT scores 0.665 and logistic regression 0.632.
+- **Parts from recent language models do not move AUC here.** No difference reaches 0.001, and every
+  interval includes zero. With 1,018 targets and 3.6M training events, the architecture is not
+  what limits this task.
+- **Calibration is off by about twice** (expected over observed new diagnoses 1.84 to 1.95 over the
+  seeds; 4.2 at age 40, 1.4 at 80). The head holds each hazard constant from the last event before
+  the landmark, often a discharge years earlier, when the risk of coming back is highest. Delphi-2M
+  adds a no-event token every five years for this; here it is not done yet.
+- **These numbers replace an earlier set.** An external review found that only the first of several
+  targets recorded at the same time was a training label (85% of first diagnoses never were), that
+  outpatient BMI extended follow-up, that calibration dropped censored patients and that the
+  intervals ignored seed-to-seed variation (see the changelog). Fixing them raised the plain GPT from
+  0.665 to 0.676 and its lead over logistic regression from 0.012 to 0.023; the old score,
+  `risk: next_event`, gives 0.670 on the fixed models.
 
 ### MIMIC-IV diagnoses plus BMI
 
 BMI from MIMIC-IV's outpatient record (`hosp/omr`, added by `convert mimic-iv-core` when the table is
-there): 1.90M readings for 153,725 of the 364,627 patients, one per year kept. Same targets, pairs and
-plain GPT as above; seeds 1, 2 and 3, one run per 10G H100 slice. This is the closest MIMIC-IV has to
-Delphi-2M's lifestyle inputs, which it reads as three levels.
+there): 1.90M readings for 153,725 of the 364,627 patients, one per year kept, `follow_up: false`
+(an outpatient reading is an input; diagnoses are recorded only at admissions), so cases and
+controls are the same patients as above in all 1,062 pairs. Same model and seeds. This is the
+closest MIMIC-IV has to Delphi-2M's lifestyle inputs, which it reads as three levels.
 
 | Inputs | Mean AUC | vs diagnoses only | vs BMI as an event | Logistic regression |
 |---|---|---|---|---|
-| Diagnoses only | 0.665 | | | 0.653 |
-| + BMI as an event, without its value (`value_mode: none`) | 0.687 | +0.0216 (+0.0199 to +0.0233) | | 0.673 |
-| + BMI in 3 bins (`value_mode: binned`) | 0.689 | +0.0236 (+0.0219 to +0.0254) | +0.0020 (+0.0009 to +0.0031) | 0.670 |
-| + BMI as a number (`continuous`, `value_encoding: mlp`) | 0.687 | +0.0214 (+0.0197 to +0.0231) | −0.0002 (−0.0009 to +0.0005) | 0.673 |
+| Diagnoses only | 0.676 | | | 0.653 |
+| + BMI as an event, without its value (`value_mode: none`) | 0.701 | +0.0249 (+0.0240 to +0.0258) | | 0.676 |
+| + BMI in 3 bins (`value_mode: binned`) | 0.701 | +0.0249 (+0.0244 to +0.0254) | −0.0000 (−0.0011 to +0.0010) | 0.674 |
+| + BMI as a number (`continuous`, `value_encoding: mlp`) | 0.702 | +0.0253 (+0.0249 to +0.0256) | +0.0004 (−0.0006 to +0.0013) | 0.676 |
 
-- **Nearly all the gain is having a BMI measurement at all.** A reading marks a patient seen in the
-  hospital's outpatient clinics, whose later diagnoses are more likely to be recorded; it says more
-  about follow-up than about BMI.
-- **The value adds 0.002 in bins and nothing as a number**: the `mlp` value encoding is 0.002 behind
-  three bins (0.001 to 0.003). BMI's risk is U-shaped, which bins express directly; whether a larger
-  value encoder closes the gap is open.
+- **BMI adds 0.025, and the value does not matter.** Bins, a number and no value at all score the
+  same. The gain comes from having an outpatient reading, which marks a patient seen in the
+  hospital's clinics, not from the reading itself.
+- **The transformer keeps its lead with BMI** (0.701 against 0.676 for logistic regression, a gap of
+  0.025, 0.024 to 0.026 over seeds).
 
 ### Synthea
 
