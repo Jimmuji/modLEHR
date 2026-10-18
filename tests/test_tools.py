@@ -400,3 +400,15 @@ def test_readme_lists_every_command():
     readme = (Path(__file__).resolve().parents[1] / "README.md").read_text()
     table = readme[readme.index("| Command |"):readme.index("## Installation")]
     assert [c for c in commands if f"`modlehr {c}" not in table] == []
+
+
+def test_scripts_parse():
+    """Every shell script and job file in scripts/ is valid bash."""
+    import subprocess
+
+    scripts = sorted((Path(__file__).resolve().parents[1] / "scripts").rglob("*.sh")) + \
+        sorted((Path(__file__).resolve().parents[1] / "scripts").rglob("*.sbatch"))
+    assert scripts
+    for path in scripts:
+        result = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
+        assert result.returncode == 0, f"{path.name}: {result.stderr}"

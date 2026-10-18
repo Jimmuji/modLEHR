@@ -10,6 +10,9 @@ Delphi-2M's own code on the same data
 - `modlehr evaluate` and `modlehr delphi` score a checkpoint of Delphi's `train.py` with
   `--delphi-repo`, the clone of its code: its rates per day for the modLEHR targets, per year, read
   at a "no event" token placed at each landmark. `modlehr delphi --out-dir` picks where it writes
+- `scripts/compare_delphi_code.sh` runs the whole comparison: modLEHR, the export, Delphi's training,
+  both scored the same way, `modlehr compare`. On the toy data it takes about a minute on a CPU
+- docs/delphi.md: what modLEHR's plain GPT shares with Delphi-2M and where the two differ
 
 Fixes from an external code review (all six of its hypotheses held up)
 - Targets recorded at the same time are all labels of that time. Before, only the first (in token
