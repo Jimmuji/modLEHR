@@ -40,6 +40,14 @@ def test_bad_overrides_fail(bad):
         apply_overrides(load_config(CONFIG), [bad])
 
 
+def test_an_unknown_section_fails(tmp_path):
+    """A misspelt section would otherwise leave every value in it at its default without a word."""
+    path = tmp_path / "typo.yaml"
+    path.write_text(f"defaults: [{Path(CONFIG).resolve()}]\nevalute:\n  controls: never\n")
+    with pytest.raises(ValueError, match="evalute"):
+        load_config(path)
+
+
 def test_seed_sets_seed_and_suffix():
     args = build_parser().parse_args(["train", "--config", CONFIG, "--seed", "3"])
     cfg = load(args)

@@ -22,12 +22,15 @@ Fixes from an external code review (all six of its hypotheses held up)
   every target of a discharge once targets share their time; it stays as `risk: next_event`
 - Calibration compares predicted and observed numbers of new targets in the window. With targets
   sharing their time, P(any target) from the summed hazards read 3.4 times too high
+
+Fixes from a second review
 - Calibration counts a target as expected only if it comes before death, since nothing is recorded
   after it: (λ_k / (λ_k + λ_d))(1 − exp(−(λ_k + λ_d) H)). Each target on its own hazard read 1.17
   for the true hazards of a synthetic cohort with a death rate of 0.4 a year (about 1.10 at 0.1 a
   year). Calibration no longer depends on `evaluate.risk`, which picks the AUC score only; with
   `risk: next_event` it compared P(any target) with a count of all of them. Needs re-evaluating
-
+- A config with an unknown section (`evalute:`) is an error; it used to leave that section at its
+  defaults without a word
 
 Results
 - MIMIC-IV diagnoses, ten architectures over three seeds on the Alliance cluster Fir: every

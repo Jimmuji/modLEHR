@@ -164,17 +164,20 @@ def _section(cls: type, values: dict | None) -> Any:
     return cls(**values)
 
 
+SECTIONS = ("data", "model", "train", "evaluate")
+
+
 def load_config(path: str | Path) -> Config:
     raw = _read(Path(path).resolve())
+    unknown = set(raw) - set(SECTIONS)
+    if unknown:
+        raise ValueError(f"{path}: unknown sections {sorted(unknown)}; expected {', '.join(SECTIONS)}")
     return Config(
         data=_section(DataConfig, raw.get("data")),
         model=_section(ModelConfig, raw.get("model")),
         train=_section(TrainConfig, raw.get("train")),
         evaluate=_section(EvaluateConfig, raw.get("evaluate")),
     )
-
-
-SECTIONS = ("data", "model", "train", "evaluate")
 
 
 def apply_overrides(cfg: Config, items: list[str]) -> Config:
