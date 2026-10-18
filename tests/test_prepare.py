@@ -251,3 +251,19 @@ def test_inputs_without_label_sets_are_the_same_inputs(tiny_config):
         assert "next_set" in full and "next_set" not in inputs
         assert all(np.array_equal(full[k], inputs[k], equal_nan=True) for k in inputs)
     assert "next_set" not in history_before(split, 0, 60.0)
+
+
+def test_first_target_ages_within_follow_up():
+    """The earliest age of each target per subject, counting only targets up to that subject's end of
+    follow-up; inf for targets never seen, and for subjects without events."""
+    from modlehr.prepare.timeline import first_target_ages
+
+    vocab = Vocabulary.build(["GENDER//F"], ["D1", "D2"])
+    t = vocab.token_index
+    tokens = np.array([t["GENDER//F"], t["D2"], t["D1"], t["D2"], t["D1"], t["D2"]], dtype=np.int32)
+    ages = np.array([0.0, 30.0, 40.0, 20.0, 50.0, 70.0], dtype=np.float32)
+    offsets = np.array([0, 3, 3, 6])  # subject 1 has no events
+    inf = np.inf
+    np.testing.assert_array_equal(first_target_ages(tokens, ages, offsets, vocab), [[40, 30], [inf, inf], [50, 20]])
+    end = np.array([35.0, 0.0, 60.0], dtype=np.float32)
+    np.testing.assert_array_equal(first_target_ages(tokens, ages, offsets, vocab, end), [[inf, 30], [inf, inf], [50, 20]])

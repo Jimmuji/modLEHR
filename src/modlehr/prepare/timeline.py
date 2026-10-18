@@ -107,10 +107,11 @@ def first_target_ages(tokens: np.ndarray, ages: np.ndarray, offsets: np.ndarray,
                       end: np.ndarray | None = None) -> np.ndarray:
     """[n_subjects, n_targets] age at the first occurrence of each target within follow-up, inf if never."""
     out = np.full((len(offsets) - 1, len(vocab.targets)), np.inf, dtype=np.float32)
-    target_of = vocab.input_to_target[tokens]
-    for s in range(len(offsets) - 1):
-        a, b = offsets[s], offsets[s + 1]
-        t = target_of[a:b]
-        rows = (t >= 0) if end is None else (t >= 0) & (ages[a:b] <= end[s])
-        np.minimum.at(out[s], t[rows], ages[a:b][rows])
+    target_of = vocab.input_to_target[np.asarray(tokens)]
+    ages = np.asarray(ages)
+    subject = np.repeat(np.arange(len(offsets) - 1, dtype=np.int32), np.diff(offsets))
+    rows = target_of >= 0
+    if end is not None:
+        rows &= ages <= np.asarray(end)[subject]
+    np.minimum.at(out, (subject[rows], target_of[rows]), ages[rows])
     return out
