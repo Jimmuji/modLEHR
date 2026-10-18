@@ -122,12 +122,12 @@ def band_aucs(targets: list[str], first: np.ndarray, sex: np.ndarray, cases: tup
 
 
 def delphi_auc(cfg: Config, checkpoint: str | Path, gap_days: float, out_csv: str | Path | None = None,
-               seed: int = 0, log=print) -> pd.DataFrame:
+               seed: int = 0, log=print, delphi_repo: str | Path | None = None) -> pd.DataFrame:
     from modlehr.evaluate.run import load_model
 
     prepared = Path(cfg.data.prepared_dir)
     device = pick_device(cfg.train.device)
-    model, vocab = load_model(checkpoint, prepared, device)
+    model, vocab = load_model(checkpoint, prepared, device, delphi_repo)
     split = open_split(prepared, cfg.evaluate.split)
     first = split_first_ages(split, vocab)
     gap = gap_days / 365.25

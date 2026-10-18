@@ -1,4 +1,5 @@
-"""Delphi-2M's own code on modLEHR's data: export a prepared dataset to its format.
+"""Delphi-2M's own code on modLEHR's data: export a prepared dataset to its format, and score its
+checkpoints with modLEHR's evaluation.
 
 Delphi-2M (Shmatko et al., Nature 2025; github.com/gerstung-lab/Delphi) trains on a flat array of
 (patient, age in days, token) rows of uint32. `export` writes a prepared dataset that way, so its
@@ -19,18 +20,29 @@ the loss, as Delphi-2M leaves out sex and lifestyle; then the targets, in modLEH
 Each subject's events run to the end of follow-up. When the last of them comes earlier (follow-up
 ended at an event prepare dropped), a "no event" token is written at the end of follow-up, so
 Delphi, which ends a record at its last token, sees the same follow-up.
+
+`DelphiModel` wraps a checkpoint of Delphi's train.py so that `modlehr evaluate` and `modlehr
+delphi` score it like a modLEHR model: its log-rates per day for the modLEHR targets, per year. At
+a landmark it is asked the way Delphi is meant to be asked about a time with no event: a "no event"
+token at the landmark age is appended to the history.
 """
 
 from __future__ import annotations
 
+import importlib.util
 import json
+import math
 from pathlib import Path
+from types import SimpleNamespace
 
 import meds
 import numpy as np
+import torch
+import torch.nn as nn
 
 from modlehr.config import Config
 from modlehr.evaluate.delphi import SEX_TOKENS
+from modlehr.model.heads import CompetingRiskHead
 from modlehr.prepare.dataset import open_split
 from modlehr.prepare.vocabulary import Vocabulary
 
@@ -38,11 +50,12 @@ DAYS_PER_YEAR = 365.25
 NO_EVENT = 0                 # Delphi's id for "no event"; the model sees every id shifted by one
 FEMALE, MALE = 1, 2
 LIFESTYLE = range(3, 12)     # ids whose ages Delphi's training shifts at random
+MASK_TIME = -10000.0         # Delphi's age for padding
 
 
 def delphi_ids(vocab: Vocabulary) -> np.ndarray:
     """Delphi id of every modLEHR input token (-1 for padding). The same vocabulary always gives the
-    same ids."""
+    same ids, so a checkpoint trained on an export can be scored without the export."""
     ids = np.full(len(vocab.tokens), -1, dtype=np.int64)
     for token, delphi_id in ((SEX_TOKENS["female"], FEMALE), (SEX_TOKENS["male"], MALE)):
         if token in vocab.token_index:
@@ -106,3 +119,45 @@ def export(cfg: Config, out_dir: str | Path, delphi_out_dir: str | Path, log=pri
     log(f"[export-delphi] {counts['train']['patients']:,} training, {counts['val']['patients']:,} tuning and "
         f"{counts['test']['patients']:,} {cfg.evaluate.split} patients, {n_ids + 1:,} Delphi tokens → {out_dir}")
     return counts
+
+
+def is_delphi_checkpoint(state: dict) -> bool:
+    return "model_args" in state and "model_config" not in state
+
+
+class DelphiModel(nn.Module):
+    """A checkpoint of Delphi-2M's train.py, read like a modLEHR model: forward(batch) gives the
+    log-rates per year of the modLEHR targets at every event."""
+
+    def __init__(self, repo: str | Path, state: dict, vocab: Vocabulary):
+        super().__init__()
+        path = Path(repo).expanduser() / "model.py"
+        if not path.exists():
+            raise FileNotFoundError(f"{path} not found; --delphi-repo should be a clone of github.com/gerstung-lab/Delphi")
+        spec = importlib.util.spec_from_file_location("delphi_model", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        self.delphi = module.Delphi(module.DelphiConfig(**state["model_args"]))
+        weights = {k.removeprefix("_orig_mod."): v for k, v in state["model"].items()}
+        self.delphi.load_state_dict(weights)
+        ids = delphi_ids(vocab)
+        if ids.max() + 2 > state["model_args"]["vocab_size"]:
+            raise ValueError("the checkpoint's vocabulary is smaller than this prepared dataset's; "
+                             "was it trained on an export of different prepared data?")
+        self.query_token = len(vocab.tokens)  # an input id beyond the vocabulary: Delphi's "no event"
+        lookup = np.r_[ids + 1, NO_EVENT + 1]
+        lookup[0] = 0  # padding
+        self.register_buffer("lookup", torch.as_tensor(lookup), persistent=False)
+        self.register_buffer("columns", torch.as_tensor(ids[vocab.target_to_input] + 1), persistent=False)
+        self.cfg = SimpleNamespace(max_len=int(state["model_args"]["block_size"]))
+        self.head = CompetingRiskHead  # loss, risk, observed_risk and sample work on any log-rates per year
+
+    def forward(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        tokens = batch["tokens"]
+        idx = self.lookup[tokens]
+        age = torch.where(tokens != 0, batch["ages"] * DAYS_PER_YEAR, torch.full_like(batch["ages"], MASK_TIME))
+        # Delphi's forward also returns every layer's attention weights; keep those under about 1 GB
+        c = self.delphi.config
+        rows = max(1, 2**28 // (c.n_layer * c.n_head * tokens.shape[1] ** 2))
+        logits = torch.cat([self.delphi(idx[i:i + rows], age[i:i + rows])[0] for i in range(0, len(idx), rows)])
+        return logits[..., self.columns].float() + math.log(DAYS_PER_YEAR)  # its log-rates are per day

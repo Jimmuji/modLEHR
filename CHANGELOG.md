@@ -7,6 +7,9 @@ Delphi-2M's own code on the same data
   `test.bin`, `labels.csv`) with a `delphi_config.py` of the modLEHR run's size and schedule, so
   Delphi's `train.py` trains on the same subjects, events and splits. Records end at the end of
   follow-up, closed by a "no event" token when follow-up ends after the last event written
+- `modlehr evaluate` and `modlehr delphi` score a checkpoint of Delphi's `train.py` with
+  `--delphi-repo`, the clone of its code: its rates per day for the modLEHR targets, per year, read
+  at a "no event" token placed at each landmark. `modlehr delphi --out-dir` picks where it writes
 
 Fixes from an external code review (all six of its hypotheses held up)
 - Targets recorded at the same time are all labels of that time. Before, only the first (in token

@@ -60,7 +60,7 @@ raw records ──convert──> MEDS ──prepare──> timelines ──train
 | `modlehr generate` | Sample future outcomes for one patient |
 | `modlehr simulate` | Sample one future per held-out patient, cut at the end of the real record, and compare incidence by age with the records |
 | `modlehr delphi` | Delphi-2M's own AUC (by sex and 5-year age band, against patients who never have the disease), to set a model next to Delphi-2M's published numbers |
-| `modlehr export-delphi` | Write a prepared dataset in Delphi-2M's format, with a config for its `train.py`, so its own code trains on the same data |
+| `modlehr export-delphi` | Write a prepared dataset in Delphi-2M's format, with a config for its `train.py`, so its own code trains on the same data; `evaluate` and `delphi` then score its checkpoint (`--delphi-repo`) |
 | `modlehr run` | `prepare` (only if the data config or the MEDS files changed), `train` and `evaluate` in one command |
 | `modlehr compare` | Mean AUC of several runs and the paired difference against the first, averaging over seeds, with 95% intervals over pairs and over seeds |
 
@@ -75,7 +75,7 @@ With [uv](https://docs.astral.sh/uv/):
 git clone https://github.com/Jimmuji/modLEHR.git && cd modLEHR
 uv venv --python 3.13 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
-.venv/bin/python -m pytest          # 90 tests, about 20 seconds
+.venv/bin/python -m pytest          # 91 tests, about 20 seconds
 ```
 
 With plain pip: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
