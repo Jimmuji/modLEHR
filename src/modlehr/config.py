@@ -160,8 +160,38 @@ def _section(cls: type, values: dict | None) -> Any:
     if unknown:
         raise ValueError(f"unknown keys for {cls.__name__}: {sorted(unknown)}")
     if cls is DataConfig and "events" in values:
-        values["events"] = [EventRule(**rule) for rule in values["events"]]
+        values["events"] = [_rule(rule) for rule in values["events"] or []]
     return cls(**values)
+
+
+def _rule(raw: Any) -> EventRule:
+    if not isinstance(raw, dict):
+        raise ValueError(f"each entry of data.events is a mapping with a name and a role, not {raw!r}")
+    unknown, missing = set(raw) - {f.name for f in fields(EventRule)}, {"name", "role"} - set(raw)
+    if unknown or missing:
+        problem = f"unknown keys {sorted(unknown)}" if unknown else f"missing {sorted(missing)}"
+        raise ValueError(f"event rule {raw.get('name', '(no name)')!r}: {problem}; "
+                         f"keys are {[f.name for f in fields(EventRule)]}")
+    return EventRule(**raw)
+
+
+# Values checked when a config is loaded, so a typo fails before any work is done rather than at the
+# stage that reads it (a misspelt evaluate.risk would otherwise fail after training).
+CHOICES = {("data", "value_mode"): ("continuous", "binned", "none"), ("train", "precision"): ("fp32", "bf16"),
+           ("evaluate", "controls"): ("at_risk", "never"), ("evaluate", "risk"): ("marginal", "next_event")}
+
+
+def check(cfg: Config) -> Config:
+    for (section, key), allowed in CHOICES.items():
+        value = getattr(getattr(cfg, section), key)
+        if value not in allowed:
+            raise ValueError(f"{section}.{key} must be one of {', '.join(allowed)}, not {value!r}")
+    landmarks = cfg.evaluate.landmarks
+    if not isinstance(landmarks, list) or not all(isinstance(a, (int, float)) for a in landmarks):
+        raise ValueError(f"evaluate.landmarks must be a list of ages, e.g. [40, 50, 60], not {landmarks!r}")
+    if not cfg.evaluate.horizon_years > 0:
+        raise ValueError(f"evaluate.horizon_years must be positive, not {cfg.evaluate.horizon_years!r}")
+    return cfg
 
 
 SECTIONS = ("data", "model", "train", "evaluate")
@@ -172,12 +202,12 @@ def load_config(path: str | Path) -> Config:
     unknown = set(raw) - set(SECTIONS)
     if unknown:
         raise ValueError(f"{path}: unknown sections {sorted(unknown)}; expected {', '.join(SECTIONS)}")
-    return Config(
+    return check(Config(
         data=_section(DataConfig, raw.get("data")),
         model=_section(ModelConfig, raw.get("model")),
         train=_section(TrainConfig, raw.get("train")),
         evaluate=_section(EvaluateConfig, raw.get("evaluate")),
-    )
+    ))
 
 
 def apply_overrides(cfg: Config, items: list[str]) -> Config:
@@ -191,4 +221,4 @@ def apply_overrides(cfg: Config, items: list[str]) -> Config:
         if name == "events":
             raise ValueError("data.events cannot be overridden on the command line; edit the data config")
         setattr(part, name, yaml.safe_load(raw))
-    return cfg
+    return check(cfg)

@@ -35,7 +35,9 @@ def test_overrides_parse_yaml_values():
     assert cfg.train.steps == 10 and cfg.evaluate.landmarks == [50, 60]
 
 
-@pytest.mark.parametrize("bad", ["model.not_a_key=1", "nosection.steps=1", "train.steps", "data.events=[]"])
+@pytest.mark.parametrize("bad", ["model.not_a_key=1", "nosection.steps=1", "train.steps", "data.events=[]",
+                                 "evaluate.risk=marginl", "evaluate.controls=nevr", "evaluate.landmarks=50",
+                                 "evaluate.horizon_years=0", "data.value_mode=bins", "train.precision=fp16"])
 def test_bad_overrides_fail(bad):
     with pytest.raises(ValueError):
         apply_overrides(load_config(CONFIG), [bad])
@@ -46,6 +48,15 @@ def test_an_unknown_section_fails(tmp_path):
     path = tmp_path / "typo.yaml"
     path.write_text(f"defaults: [{Path(CONFIG).resolve()}]\nevalute:\n  controls: never\n")
     with pytest.raises(ValueError, match="evalute"):
+        load_config(path)
+
+
+@pytest.mark.parametrize("rule, message", [("{name: sex, role: static, folow_up: false}", "folow_up"),
+                                           ("{name: sex, prefix: GENDER//}", "role")])
+def test_a_bad_event_rule_names_the_rule(tmp_path, rule, message):
+    path = tmp_path / "rule.yaml"
+    path.write_text(f"defaults: [{Path(CONFIG).resolve()}]\ndata:\n  events:\n    - {rule}\n")
+    with pytest.raises(ValueError, match=f"event rule 'sex'.*{message}"):
         load_config(path)
 
 

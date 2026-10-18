@@ -43,6 +43,10 @@ Fixes from a second review
   admission rather than discharge. Needs re-preparing
 - `prepare` skips a MEDS shard with no `MEDS_BIRTH` rows, or no rows at all; it stopped with a pandas
   TypeError instead of dropping those subjects as documented
+- Configs are checked when they load: `evaluate.risk`, `evaluate.controls`, `evaluate.landmarks`,
+  `evaluate.horizon_years`, `data.value_mode` and `train.precision`. A misspelt `evaluate.risk` used
+  to fail only after `modlehr run` had trained. A bad event rule names the rule and its unknown or
+  missing keys
 
 Results
 - MIMIC-IV diagnoses, ten architectures over three seeds on the Alliance cluster Fir: every
