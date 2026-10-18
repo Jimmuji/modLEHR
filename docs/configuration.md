@@ -195,6 +195,7 @@ step, train and tuning loss, the loss parts, seconds), `best.pt`, `last.pt`, and
 | `horizon_years` | `5.0` | A case has the outcome within this many years after the landmark |
 | `min_cases` | `20` | A (target, landmark) pair is scored only with at least this many cases and this many controls |
 | `controls` | `at_risk` | Who counts as a control: `at_risk` keeps subjects with no outcome by L + H whose record reaches L + H, and leaves out the rest as censored; `never` keeps every subject with no outcome anywhere in the record, which is Delphi-2M's definition. AUCs under the two are not comparable, so the one used is written into `evaluate.json` |
+| `risk` | `marginal` | The score each target gets: `marginal`, P(k first occurs within the horizon) = 1 − exp(−λ_k H), each target on its own hazard (what the loss fits when targets share their time); or `next_event`, P(k is the next target and comes within the horizon), one target at a time, which understates each target when many are recorded together. The one used is written into `evaluate.json` |
 | `split` | `held_out` | Which split to score |
 | `batch_size` | `256` | Timelines per forward pass |
 | `likelihood` | `true` | Also report the negative log-likelihood per prediction on the split |

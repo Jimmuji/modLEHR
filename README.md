@@ -285,11 +285,11 @@ at all, censored or not, which is how Delphi-2M defines controls. Which one is i
 numbers, so it is written into `evaluate.json` and printed with the mean, and `modlehr baseline`
 reads the same setting.
 
-**Calibration.** At each landmark, the head's probability that the next outcome is k and comes
-in (L, L + H] is compared with what came next in the record; patients whose record ends before
-L + H with no outcome are left out. The window starts at L even when the last event is years
-earlier, since nothing happened in between. Reported as expected over observed outcomes (1 is
-calibrated), and as predicted against observed by risk bin in `evaluate_calibration.csv`.
+**Calibration.** At each landmark, the predicted number of targets first occurring in (L, L + H],
+the sum of the risks over targets the patient has not had yet, is compared with the number observed.
+Patients whose follow-up ends inside the window are not dropped: the fully observed ones are weighted
+by 1 / P(still followed), from a Kaplan-Meier fit of the follow-up end times. Reported as expected
+over observed (1 is calibrated), and per (patient, target) by risk bin in `evaluate_calibration.csv`.
 
 **Likelihood.** The mean negative log-likelihood per prediction on the held-out patients,
 split into an event part (which target comes next) and a time part (how long until it). AUC

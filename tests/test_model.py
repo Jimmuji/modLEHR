@@ -64,9 +64,12 @@ def test_competing_risk_loss_matches_formula():
 
 
 def test_risk_is_a_probability():
-    r = CompetingRiskHead.risk(torch.log(torch.tensor([[0.1, 0.3]])), horizon_years=5.0)
-    assert torch.all(r >= 0) and float(r.sum()) <= 1.0
-    assert abs(float(r.sum()) - (1 - math.exp(-0.4 * 5))) < 1e-6
+    log_rates = torch.log(torch.tensor([[0.1, 0.3]]))
+    marginal = CompetingRiskHead.risk(log_rates, horizon_years=5.0)  # each target on its own hazard
+    assert torch.allclose(marginal, torch.tensor([[1 - math.exp(-0.5), 1 - math.exp(-1.5)]]))
+    nxt = CompetingRiskHead.risk(log_rates, horizon_years=5.0, kind="next_event")  # one target at a time
+    assert torch.all(nxt >= 0) and abs(float(nxt.sum()) - (1 - math.exp(-0.4 * 5))) < 1e-6
+    assert torch.all(nxt < marginal)
 
 
 def test_init_rates():

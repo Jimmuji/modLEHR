@@ -7,16 +7,15 @@ is the model's competing-risks probability of k within the horizon, read from it
 the last event at or before L. One AUC per (target, landmark) pair with enough cases and
 controls; the summary is the mean over pairs.
 
-Calibration. At each landmark the head's probability that the next target is k and comes in
-(L, L + H] is compared with what the record shows. The window starts at L even when the last event
-is years earlier: nothing happened in between, and the head's waiting time is exponential, so its
-probability for a window of length H does not depend on where the window starts. Patients whose
-follow-up ends before L + H without a target are not dropped, which would leave the observed rate
-too high (only people still followed, plus everyone with an early target): each patient whose
-status at L + H is known is weighted by 1 / P(still followed), estimated by Kaplan-Meier from the
-censoring times (inverse probability of censoring weights), and the weighted outcomes are averaged
-over everyone. Reported as expected over observed (1 is calibrated) for any target and for each
-target pooled, and as a table of predicted against observed by risk bin.
+Calibration. At each landmark, the predicted number of targets that first occur in (L, L + H],
+the sum over targets of the risk (targets a patient already had are left out), is compared with
+the number observed. The window starts at L even when the last event is years earlier. Patients
+whose follow-up ends before L + H are not dropped, which would leave the observed numbers too high:
+each patient whose window is fully observed (followed to L + H, or dead within it) is weighted by
+1 / P(still followed), estimated by Kaplan-Meier from the follow-up end times (inverse probability
+of censoring weights), and the weighted counts are averaged over everyone. Reported as expected
+over observed (1 is calibrated), overall and per landmark, and as a table of predicted against
+observed per (patient, target) by risk bin.
 
 Likelihood. The mean negative log-likelihood per prediction of the training objective, split
 into its event part (which target comes next) and its time part (how long until it). AUC is
@@ -32,6 +31,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import meds
 import numpy as np
 import pandas as pd
 import torch
@@ -58,7 +58,7 @@ def load_model(checkpoint: str | Path, prepared_dir: Path, device: torch.device)
 
 @torch.no_grad()
 def landmark_risks(model: ModLEHR, split: PreparedSplit, subjects: np.ndarray, landmark: float, horizon: float,
-                   batch_size: int, device: torch.device) -> np.ndarray:
+                   batch_size: int, device: torch.device, kind: str = "marginal") -> np.ndarray:
     """[len(subjects), n_targets] risk of each target within the horizon, from the history up to the landmark."""
     rows = [history_before(split, i, landmark, model.cfg.max_len) for i in subjects]
     risks = []
@@ -67,7 +67,8 @@ def landmark_risks(model: ModLEHR, split: PreparedSplit, subjects: np.ndarray, l
         batch = to_device(collate(chunk), device)
         out = model(batch)
         last = torch.tensor([len(r["tokens"]) - 1 for r in chunk], device=device)
-        risks.append(model.head.risk(out[torch.arange(len(chunk), device=device), last], horizon).float().cpu().numpy())
+        risks.append(model.head.risk(out[torch.arange(len(chunk), device=device), last], horizon, kind)
+                     .float().cpu().numpy())
     return np.concatenate(risks) if risks else np.zeros((0, model.head.proj.out_features))
 
 
@@ -95,53 +96,43 @@ def likelihood(model: ModLEHR, split: PreparedSplit, batch_size: int, device: to
 CALIBRATION_BINS = np.array([0.0, 0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0])
 
 
-def censoring_weights(time: np.ndarray, event: np.ndarray, horizon: float) -> np.ndarray:
-    """Inverse probability of censoring weights for each subject's status at the horizon.
+def censoring_weights(time: np.ndarray, censored: np.ndarray, known: np.ndarray) -> np.ndarray:
+    """Inverse probability of censoring weights.
 
-    time: years from the landmark to the next target, or to the end of follow-up; event: a target came
-    then. G(t) is the Kaplan-Meier probability of still being followed just before t (a target and a
-    censoring at the same time count the target first). A target by the horizon gets 1 / G(time); a
-    subject followed to the horizon without one gets 1 / G(horizon); a subject censored earlier gets 0.
+    time: years from the landmark until the patient's window is settled (the horizon, death within
+    it, or the end of follow-up); censored: follow-up ended before the horizon without death; known:
+    the window is fully observed. G(t) is the Kaplan-Meier probability of still being followed just
+    before t; a known patient gets 1 / G(time), a censored one 0.
     """
     order = np.sort(time)
-    cens_times, cens_counts = np.unique(time[~event], return_counts=True)
+    cens_times, cens_counts = np.unique(time[censored], return_counts=True)
     at_risk = len(time) - np.searchsorted(order, cens_times, side="left")
     surv_after = np.cumprod(1.0 - cens_counts / np.maximum(at_risk, 1))
-
-    def survival_before(t):
-        j = np.searchsorted(cens_times, t, side="left") - 1  # censoring times strictly before t
-        return np.where(j >= 0, surv_after[np.maximum(j, 0)], 1.0)
-
-    hit = event & (time <= horizon)
-    followed = ~hit & (time >= horizon)
-    w = np.zeros(len(time))
-    w[hit] = 1.0 / np.maximum(survival_before(time[hit]), 1e-12)
-    w[followed] = 1.0 / np.maximum(survival_before(np.full(followed.sum(), horizon)), 1e-12)
-    return w
+    j = np.searchsorted(cens_times, time, side="left") - 1  # censoring times strictly before each time
+    g = np.where(j >= 0, surv_after[np.maximum(j, 0)], 1.0) if len(cens_times) else np.ones(len(time))
+    return np.where(known, 1.0 / np.maximum(g, 1e-12), 0.0)
 
 
-def calibration(split: PreparedSplit, subjects: np.ndarray, landmark: float, horizon: float,
-                risk: np.ndarray) -> tuple[dict, pd.DataFrame]:
-    """Predicted against observed next targets in (L, L + H], weighted for censoring."""
-    rows = [history_before(split, i, landmark) for i in subjects]
-    n_targets = risk.shape[1]
-    gap = landmark - np.array([r["ages"][-1] for r in rows])  # years from the last event to L
-    time = np.array([r["dt"][-1] for r in rows]) - gap  # from L to the next target or end of follow-up
-    sets = [r["next_set"][-1] if "next_set" in r else r["next_target"][-1:] for r in rows]
-    event = np.array([s[0] >= 0 for s in sets])
-    w = censoring_weights(time, event, horizon)
-    hit = event & (time <= horizon)
-    observed = np.zeros((len(rows), n_targets), dtype=bool)
-    for j in np.flatnonzero(hit):
-        observed[j, sets[j][sets[j] >= 0]] = True
-    summary = {"landmark": landmark, "subjects": int(len(rows)), "followed_to_horizon": int((w > 0).sum()),
-               "expected_any": float(risk.sum(axis=1).sum()), "observed_any": float((w * hit).sum())}
-    summary["expected_over_observed"] = summary["expected_any"] / max(summary["observed_any"], 1e-9)
-    bins = np.digitize(risk.ravel(), CALIBRATION_BINS[1:-1])
-    weighted = (observed * w[:, None]).ravel()
-    table = pd.DataFrame({"bin": bins, "predicted": risk.ravel(), "observed": weighted}).groupby("bin").agg(
+def calibration(task, risk: np.ndarray, death: int | None) -> tuple[dict, pd.DataFrame]:
+    """Predicted against observed numbers of targets first occurring in (L, L + H], weighted for censoring."""
+    L, H = task.landmark, task.horizon
+    open_ = task.first > L  # targets the patient has not had by L
+    observed = open_ & (task.first <= L + H)
+    died = (task.first[:, death] > L) & (task.first[:, death] <= L + H) if death is not None \
+        else np.zeros(len(task.first), bool)
+    settled = np.minimum(np.where(died, task.first[:, death] if death is not None else np.inf, task.end), L + H) - L
+    known = died | (task.end >= L + H)
+    w = censoring_weights(settled, ~known, known)
+    p = np.where(open_, risk, 0.0)
+    summary = {"landmark": L, "subjects": int(len(w)), "fully_observed": int(known.sum()),
+               "expected": float(p.sum()), "observed": float((observed.sum(axis=1) * w).sum())}
+    summary["expected_over_observed"] = summary["expected"] / max(summary["observed"], 1e-9)
+    pairs = open_.ravel()
+    bins = np.digitize(p.ravel()[pairs], CALIBRATION_BINS[1:-1])
+    weighted = (observed * w[:, None]).ravel()[pairs]
+    table = pd.DataFrame({"bin": bins, "predicted": p.ravel()[pairs], "observed": weighted}).groupby("bin").agg(
         pairs=("predicted", "size"), mean_predicted=("predicted", "mean"), observed_rate=("observed", "mean")).reset_index()
-    table.insert(0, "landmark", landmark)
+    table.insert(0, "landmark", L)
     table["bin_low"] = CALIBRATION_BINS[table["bin"]]
     table["bin_high"] = CALIBRATION_BINS[table["bin"] + 1]
     return summary, table.drop(columns="bin")
@@ -154,13 +145,14 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
     split = open_split(prepared, cfg.evaluate.split)
     first = split_first_ages(split, vocab)
     H, min_cases = cfg.evaluate.horizon_years, cfg.evaluate.min_cases
+    death = vocab.targets.index(meds.death_code) if meds.death_code in vocab.targets else None
 
     rows, calib, calib_tables = [], [], []
     for L in cfg.evaluate.landmarks:
         task = landmark_task(split, vocab, L, H, first, cfg.evaluate.controls)
-        risk = landmark_risks(model, split, task.subjects, L, H, cfg.evaluate.batch_size, device)
+        risk = landmark_risks(model, split, task.subjects, L, H, cfg.evaluate.batch_size, device, cfg.evaluate.risk)
         if len(task.subjects):
-            c_summary, c_table = calibration(split, task.subjects, L, H, risk)
+            c_summary, c_table = calibration(task, risk, death)
             calib.append(c_summary)
             calib_tables.append(c_table)
         for k, name in enumerate(vocab.targets):
@@ -172,13 +164,13 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
                          "auc": roc_auc_score(case[keep], risk[keep, k])})
     result = pd.DataFrame(rows, columns=["target", "landmark", "cases", "controls", "auc"])
 
-    summary = {**summarize(result), "horizon_years": H, "controls": cfg.evaluate.controls,
+    summary = {**summarize(result), "horizon_years": H, "controls": cfg.evaluate.controls, "risk": cfg.evaluate.risk,
                "landmarks": cfg.evaluate.landmarks,
                "split": cfg.evaluate.split, "checkpoint": str(checkpoint)}
     if calib:
-        expected, observed = sum(c["expected_any"] for c in calib), sum(c["observed_any"] for c in calib)
+        expected, observed = sum(c["expected"] for c in calib), sum(c["observed"] for c in calib)
         summary["calibration"] = {"expected_over_observed": expected / max(observed, 1e-9), "window": "landmark",
-                                  "observed": "censoring-weighted",
+                                  "counts": "targets first occurring in the window", "observed": "censoring-weighted",
                                   "by_landmark": calib}
     if cfg.evaluate.likelihood:
         summary["likelihood"] = likelihood(model, split, cfg.evaluate.batch_size, device)
@@ -196,11 +188,11 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
     if len(result):
         lo, hi = summary["mean_auc_ci95"]
         log(f"[evaluate] mean AUC {summary['mean_auc']:.3f} (95% CI {lo:.3f} to {hi:.3f}) over "
-            f"{summary['pairs']} target and landmark pairs, controls={cfg.evaluate.controls}")
+            f"{summary['pairs']} target and landmark pairs, controls={cfg.evaluate.controls}, risk={cfg.evaluate.risk}")
     else:
         log("[evaluate] no target had enough cases and controls; lower evaluate.min_cases or add landmarks")
     if "calibration" in summary:
-        log(f"[evaluate] calibration: expected / observed next targets within {H:g} years of the landmark = "
+        log(f"[evaluate] calibration: expected / observed new targets within {H:g} years of the landmark = "
             f"{summary['calibration']['expected_over_observed']:.2f} (1 is calibrated; "
             + ", ".join(f"age {c['landmark']:g}: {c['expected_over_observed']:.2f}" for c in calib) + ")")
     if "likelihood" in summary:

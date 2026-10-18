@@ -110,6 +110,7 @@ class EvaluateConfig:
     horizon_years: float = 5.0
     min_cases: int = 20
     controls: str = "at_risk"  # "at_risk" (censored dropped) or "never" (Delphi-2M convention)
+    risk: str = "marginal"  # "marginal" P(k within H) = 1 - exp(-lambda_k H), or "next_event" (k is the next target)
     split: str = "held_out"
     batch_size: int = 256
     likelihood: bool = True  # also report the held-out negative log-likelihood (event and time parts)

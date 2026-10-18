@@ -50,8 +50,21 @@ class CompetingRiskHead(nn.Module):
         return nll, {"nll_event": float((nll_event * m).sum().detach() / n), "nll_time": float((nll_time * m).sum().detach() / n)}
 
     @staticmethod
-    def risk(log_rates: torch.Tensor, horizon_years: float) -> torch.Tensor:
-        """P(target k is the next target event and happens within the horizon) under constant hazards."""
+    def risk(log_rates: torch.Tensor, horizon_years: float, kind: str = "marginal") -> torch.Tensor:
+        """Probability of each target within the horizon, holding the hazards constant.
+
+        marginal     P(k occurs within the horizon) = 1 - exp(-lambda_k * H): each target on its own
+                     hazard, which is what the loss fits when targets share their time, and what the
+                     landmark task asks (k first occurs in the window, whether or not something else
+                     comes first). Ranks subjects by lambda_k.
+        next_event   P(k is the next target and comes within the horizon)
+                     = (lambda_k / Lambda)(1 - exp(-Lambda * H)): one target at a time. With tied
+                     targets Lambda counts every target of a discharge, so this understates each k.
+        """
+        if kind == "marginal":
+            return -torch.expm1(-log_rates.exp() * horizon_years)
+        if kind != "next_event":
+            raise ValueError(f"risk must be marginal or next_event, not {kind!r}")
         log_total = torch.logsumexp(log_rates, dim=-1, keepdim=True)
         share = (log_rates - log_total).exp()
         p_any = 1.0 - torch.exp(-log_total.exp() * horizon_years)

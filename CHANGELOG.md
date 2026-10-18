@@ -17,6 +17,11 @@ Fixes from an external code review (all six of its hypotheses held up)
 - `modlehr compare` adds a 95% interval over seeds; the interval over pairs leaves out seed-to-seed
   variation and was too narrow to decide between models
 - `--resume` on an Apple GPU restores its random state too
+- Each target's risk is its own probability within the horizon, 1 − exp(−λ_k H) (`evaluate.risk: marginal`).
+  The old score, P(k is the next target within the horizon), spreads one event's probability over
+  every target of a discharge once targets share their time; it stays as `risk: next_event`
+- Calibration compares predicted and observed numbers of new targets in the window. With targets
+  sharing their time, P(any target) from the summed hazards read 3.4 times too high
 
 
 Results

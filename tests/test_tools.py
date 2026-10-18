@@ -162,53 +162,45 @@ def test_a_layer_naming_a_grouping_replaces_its_options(tmp_path):
 
 
 def test_calibration_window_starts_at_the_landmark():
-    """The last event before L can be years earlier; the observed window is (L, L + H] all the same."""
+    """Counts targets first occurring in (L, L + H], however long ago the last event was; a patient
+    whose follow-up ends inside the window is censored (weight 0) and the fully observed ones stand in."""
     from modlehr.evaluate.run import calibration
+    from modlehr.evaluate.task import LandmarkTask
 
-    class Split:  # three subjects, two events each: sex at age 0, then one more
-        offsets = np.array([0, 2, 4, 6])
-        arrays = {"ages": np.array([0, 51, 0, 55, 0, 51], np.float32)}
-        next_target = np.array([0, -1, 0, -1, -1, -1])
-        dt = np.array([51, 0, 55, 0, 51, 0], np.float32)  # from each event to the next target or record end
+    inf = float("inf")
+    # landmark 50, horizon 2: patient 0 gets the target at 51, patient 1 at 55 (after the window),
+    # patient 2's follow-up ends at 51 without it
+    task = LandmarkTask(50.0, 2.0, np.arange(3), np.array([[51.0], [55.0], [inf]]), np.array([60.0, 60.0, 51.0]))
+    summary, _ = calibration(task, np.full((3, 1), 0.25), death=None)
+    assert summary["subjects"] == 3 and summary["fully_observed"] == 2
+    assert summary["expected"] == 0.75 and abs(summary["observed"] - 1.5) < 1e-9  # 1 x 1 / G(2) = 1 / (2/3)
 
-        def subject(self, i, start, n):
-            a = self.offsets[i]
-            return {"ages": self.arrays["ages"][a + start:a + n], "next_target": self.next_target[a + start:a + n],
-                    "dt": self.dt[a + start:a + n]}
 
-    # landmark 50, horizon 2: subject 0 has the target at 51 (a case), subject 1 at 55 (none within the
-    # window), subject 2's follow-up ends at 51 without one (censored: weight 0, and subject 1, still
-    # followed at 52, stands in for it with weight 1 / (2/3))
-    summary, _ = calibration(Split(), np.arange(3), 50.0, 2.0, np.full((3, 1), 0.25))
-    assert summary["subjects"] == 3 and summary["followed_to_horizon"] == 2
-    assert summary["observed_any"] == 1.0 and summary["expected_any"] == 0.75
+def test_calibration_counts_a_death_in_the_window_as_observed():
+    from modlehr.evaluate.run import calibration
+    from modlehr.evaluate.task import LandmarkTask
+
+    inf = float("inf")
+    # target 0 is death: patient 0 dies at 51, so follow-up ends there, but its window is settled
+    task = LandmarkTask(50.0, 2.0, np.arange(2), np.array([[51.0, inf], [inf, inf]]), np.array([51.0, 60.0]))
+    summary, _ = calibration(task, np.full((2, 2), 0.1), death=0)
+    assert summary["fully_observed"] == 2 and summary["observed"] == 1.0
 
 
 def test_calibration_is_unbiased_under_censoring():
-    """Perfect predictions (risk 0.5 within the horizon) with heavy independent censoring: dropping the
-    censored subjects would read 0.82; the censoring weights read 1."""
+    """Perfect predictions (P(target within the horizon) = 0.5) with heavy independent censoring:
+    dropping censored patients would read 0.82, the censoring weights read 1."""
     from modlehr.evaluate.run import calibration
+    from modlehr.evaluate.task import LandmarkTask
 
     rng = np.random.default_rng(0)
     n, landmark, horizon = 20000, 50.0, 2.0
-    gap = rng.exponential(horizon / np.log(2), n)  # P(target within the horizon) = 0.5
-    cens = rng.uniform(0, 4, n)
-    hit = gap <= cens
-    time = np.where(hit, gap, cens)
-
-    class Split:  # each subject: sex at age 0, then the target or the end of follow-up
-        offsets = np.arange(0, 2 * n + 1, 2)
-        arrays = {"ages": np.ravel(np.column_stack([np.zeros(n), landmark + time])).astype(np.float32)}
-
-        def subject(self, i, start, stop):
-            ages = self.arrays["ages"][2 * i:2 * i + 2]
-            nt = np.array([0 if hit[i] else -1, -1])
-            dt = np.array([landmark + time[i], 0.0], np.float32)
-            return {"ages": ages[start:stop], "next_target": nt[start:stop], "dt": dt[start:stop]}
-
-    summary, _ = calibration(Split(), np.arange(n), landmark, horizon, np.full((n, 1), 0.5))
+    gap = rng.exponential(horizon / np.log(2), n)
+    end = landmark + rng.uniform(0, 4, n)
+    first = np.where(landmark + gap <= end, landmark + gap, np.inf)[:, None]
+    task = LandmarkTask(landmark, horizon, np.arange(n), first, end)
+    summary, _ = calibration(task, np.full((n, 1), 0.5), death=None)
     assert abs(summary["expected_over_observed"] - 1.0) < 0.03
-
 
 def test_wandb_tracking_with_a_stand_in(tiny_config, monkeypatch):
     """With train.wandb_project set, training logs every check and evaluation adds its summary to the
