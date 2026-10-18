@@ -2,10 +2,11 @@
 
     modlehr compare runs/synthea_gpt_s1 runs/synthea_gpt_s2 runs/synthea_gpt_rope_age_s1 runs/synthea_gpt_logistic
 
-Run directories whose names differ only by a seed suffix (_s1, _s2, ...) form one group: each
-(target, landmark) AUC is averaged over the group's seeds before anything is compared. The
-first group is the reference. For every other group, the difference is taken pair by pair over
-the pairs both groups scored, with two 95% intervals:
+Run directories in the same parent directory whose names differ only by a seed suffix (_s1, _s2,
+...) form one group: each (target, landmark) AUC is averaged over the group's seeds before anything
+is compared. Runs of the same name in different directories are different groups, shown by their
+path. The first group is the reference. For every other group, the difference is taken pair by pair
+over the pairs both groups scored, with two 95% intervals:
 
     over pairs   from the spread of the pair differences (normal approximation). It leaves out how
                  much a whole run moves with its seed, and pairs share subjects, so it is too narrow
@@ -31,11 +32,13 @@ SEED_SUFFIX = re.compile(r"_s\d+$")
 
 
 def group_runs(paths: list[str | Path]) -> dict[str, list[Path]]:
-    """Run name without its seed suffix → run directories, in the order given."""
-    groups: dict[str, list[Path]] = {}
+    """Run name without its seed suffix → run directories, in the order given. Directories of the same
+    name under different parents are different runs; those groups are named by their path."""
+    keyed: dict[Path, list[Path]] = {}
     for p in map(Path, paths):
-        groups.setdefault(SEED_SUFFIX.sub("", p.name), []).append(p)
-    return groups
+        keyed.setdefault(p.parent / SEED_SUFFIX.sub("", p.name), []).append(p)
+    names = [key.name for key in keyed]
+    return {(key.name if names.count(key.name) == 1 else str(key)): dirs for key, dirs in keyed.items()}
 
 
 def load_group(dirs: list[Path]) -> tuple[pd.Series, float | None]:

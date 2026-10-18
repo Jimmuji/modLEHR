@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 import pytest
 import torch
 
@@ -57,6 +58,23 @@ def test_seed_sets_seed_and_suffix():
 def test_group_runs_by_seed_suffix():
     groups = group_runs(["runs/a_s1", "runs/a_s2", "runs/a_rope_s1", "runs/a_logistic"])
     assert list(groups) == ["a", "a_rope", "a_logistic"] and len(groups["a"]) == 2
+
+
+def _evaluated(path: Path, aucs, baseline: str | None = None) -> Path:
+    import pandas as pd
+    path.mkdir(parents=True)
+    pd.DataFrame({"target": [f"T{i}" for i in range(len(aucs))], "landmark": 50, "cases": 30, "controls": 30,
+                  "auc": aucs}).to_csv(path / "evaluate.csv", index=False)
+    (path / "evaluate.json").write_text(json.dumps({"baseline": baseline} if baseline else {"checkpoint": "best.pt"}))
+    return path
+
+
+def test_runs_of_the_same_name_in_different_directories_are_not_seeds(tmp_path):
+    a = _evaluated(tmp_path / "diagnoses" / "gpt_s1", [0.60, 0.62])
+    b = _evaluated(tmp_path / "bmi" / "gpt_s1", [0.70, 0.72])
+    table = compare([a, b])
+    assert list(table["seeds"]) == [1, 1] and table["run"].iloc[1].endswith("bmi/gpt")
+    assert table["diff"].iloc[1] == pytest.approx(0.10)
 
 
 def test_landmark_task_labels(tiny_config):
