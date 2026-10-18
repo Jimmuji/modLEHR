@@ -77,6 +77,23 @@ def test_runs_of_the_same_name_in_different_directories_are_not_seeds(tmp_path):
     assert table["diff"].iloc[1] == pytest.approx(0.10)
 
 
+def test_seed_intervals(tmp_path):
+    """Seed by seed over the seeds both groups have; one-sample only against a classical baseline;
+    none against a single seeded model run, which is one draw rather than a fixed number."""
+    ref = [_evaluated(tmp_path / f"gpt_s{s}", [0.60 + 0.01 * s, 0.62 + 0.01 * s]) for s in (1, 2, 3)]
+    var = [_evaluated(tmp_path / f"rope_s{s}", [0.61 + 0.01 * s + 0.002 * s, 0.63 + 0.01 * s]) for s in (1, 2)]
+    single = _evaluated(tmp_path / "moe_s1", [0.62, 0.64])
+    logistic = _evaluated(tmp_path / "gpt_logistic", [0.55, 0.57], baseline="logistic")
+    table = compare([*ref, *var, single, logistic]).set_index("run")
+    # rope against gpt on seeds 1 and 2: differences 0.012 and 0.014
+    assert table.loc["rope", "seed_n"] == 2 and table.loc["rope", "seed_ci_low"] < 0.012
+    assert table.loc["rope", "seed_ci_high"] > 0.014
+    assert pd.isna(table.loc["moe", "seed_n"])  # a single seed against three
+    assert table.loc["gpt_logistic", "seed_n"] == 3  # the baseline is fixed: one-sample over gpt's seeds
+    alone = compare([single, *var]).set_index("run")
+    assert pd.isna(alone.loc["rope", "seed_n"])  # a single seeded reference is not fixed either
+
+
 def test_landmark_task_labels(tiny_config):
     run_prepare(tiny_config.data, log=QUIET)
     prepared = Path(tiny_config.data.prepared_dir)

@@ -33,6 +33,9 @@ Fixes from a second review
   defaults without a word
 - `modlehr compare` keeps runs of the same name in different directories apart
   (`diagnoses/gpt_s1`, `bmi/gpt_s1`); it averaged them as two seeds of one run and compared nothing
+- The interval over seeds pairs the seeds two groups share (seeds 1 to 3 against 1 and 2 used to
+  get none), and is one-sample only against a classical baseline. A single seeded model run was
+  taken as a fixed number, which left out its own seed-to-seed variation
 
 Results
 - MIMIC-IV diagnoses, ten architectures over three seeds on the Alliance cluster Fir: every

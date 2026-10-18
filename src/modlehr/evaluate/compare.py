@@ -12,8 +12,10 @@ over the pairs both groups scored, with two 95% intervals:
                  much a whole run moves with its seed, and pairs share subjects, so it is too narrow
                  for deciding whether one model beats another.
     over seeds   from the runs' mean AUCs (over the shared pairs), with a t interval: seed by seed
-                 when both groups have the same seeds, one-sample when one group is a single
-                 deterministic run (a baseline). Wide with few seeds, but it is the one to read.
+                 over the seeds both groups have (at least two), or one-sample when one group is a
+                 classical baseline (`modlehr baseline`, a single run that does not vary with a seed).
+                 Wide with few seeds, but it is the one to read. A single seeded model run is one
+                 draw, not a fixed number, so it gets no interval against a group with other seeds.
 
 Held-out negative log-likelihood is shown when the runs recorded it (lower is better).
 """
@@ -58,16 +60,23 @@ def load_group(dirs: list[Path]) -> tuple[pd.Series, float | None]:
     return auc, (sum(nlls) / len(nlls) if len(nlls) == len(dirs) else None)
 
 
+def is_baseline(dirs: list[Path]) -> bool:
+    """A single run of `modlehr baseline`, which records the classical model it fit."""
+    summary = dirs[0] / "evaluate.json"
+    return len(dirs) == 1 and summary.exists() and "baseline" in json.loads(summary.read_text())
+
+
 def seed_interval(ref_dirs: list[Path], dirs: list[Path], pairs: pd.Index) -> tuple[float, float, int] | None:
     """95% t interval of the difference in mean AUC over `pairs`, from the runs' own means."""
     mean = lambda d: pd.read_csv(d / "evaluate.csv").set_index(["target", "landmark"])["auc"].reindex(pairs).mean()  # noqa: E731
     seed = lambda d: SEED_SUFFIX.search(d.name).group(0) if SEED_SUFFIX.search(d.name) else None  # noqa: E731
     a, b = {seed(d): mean(d) for d in ref_dirs}, {seed(d): mean(d) for d in dirs}
-    if len(a) > 1 and set(a) == set(b):
-        diffs = [b[k] - a[k] for k in a]  # same seed, same training windows
-    elif len(a) == 1 and len(b) > 1:
+    shared = [k for k in a if k is not None and k in b]
+    if len(shared) > 1:
+        diffs = [b[k] - a[k] for k in shared]  # same seed, same training windows
+    elif is_baseline(ref_dirs) and len(b) > 1:
         diffs = [v - next(iter(a.values())) for v in b.values()]
-    elif len(b) == 1 and len(a) > 1:
+    elif is_baseline(dirs) and len(a) > 1:
         diffs = [next(iter(b.values())) - v for v in a.values()]
     else:
         return None
