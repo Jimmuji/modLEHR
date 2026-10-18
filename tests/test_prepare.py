@@ -383,7 +383,10 @@ def test_training_with_no_event_tokens(tiny_config):
     from modlehr.prepare.vocabulary import NO_EVENT
     from modlehr.train.loop import train
 
+    run_prepare(tiny_config.data, log=lambda *_: None)
     tiny_config.data.no_event_years = 5.0
+    with pytest.raises(ValueError, match="prepare"):  # prepared without the token
+        train(tiny_config, log=lambda *_: None)
     run_prepare(tiny_config.data, log=lambda *_: None)
     prepared = Path(tiny_config.data.prepared_dir)
     vocab = Vocabulary.load(prepared / "vocab.json")

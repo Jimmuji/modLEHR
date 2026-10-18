@@ -110,6 +110,9 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
     tracker = Tracker(cfg, out_dir, "train")
     train_split = open_split(prepared, meds.train_split)
     tune_split = open_split(prepared, meds.tuning_split)
+    if (NO_EVENT in vocab.token_index) != (cfg.data.no_event_years is not None):
+        raise ValueError(f"data.no_event_years is {cfg.data.no_event_years} but {prepared} was prepared "
+                         f"{'with' if NO_EVENT in vocab.token_index else 'without'} it; run `modlehr prepare` again")
     no_event = (vocab.token_index[NO_EVENT], cfg.data.no_event_years) if cfg.data.no_event_years is not None else None
     tune_batches = fixed_windows(tune_split, cfg.train.batch_size, cfg.model.max_len, cfg.train.eval_batches,
                                  no_event=no_event)
