@@ -28,6 +28,13 @@ Follow-up from the first contact
   `evaluate`, `generate` and `simulate` then ask at one placed at the landmark or start age instead
   of reading the last event before it, often years earlier. Off by default
 
+Fir
+- `scripts/fir/rerun_all.sh` submits, from a login node, everything the review changes call for: the data
+  prepared again with logistic regression, five seeds each of the plain GPT, follow-up from the first
+  contact and "no event" tokens, then `scripts/fir/delphi_code.sbatch`, Delphi-2M's own code against the
+  plain GPT on the same data (Delphi's code is cloned on the login node, since compute nodes have no
+  internet). It stops if `runs/` still holds runs evaluated before the review fixes
+
 Licence
 - The code is under the MIT License (`LICENSE`, and `license` in pyproject.toml)
 
