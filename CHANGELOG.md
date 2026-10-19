@@ -28,6 +28,9 @@ Follow-up from the first contact
   `evaluate`, `generate` and `simulate` then ask at one placed at the landmark or start age instead
   of reading the last event before it, often years earlier. Off by default
 
+Licence
+- The code is under the MIT License (`LICENSE`, and `license` in pyproject.toml)
+
 Fixes
 - `modlehr convert synthea --raw-dir` reads the folder given to Synthea as `--exporter.baseDirectory`,
   as the README's walkthrough does; it looked only in that folder and in chunk folders, not in the

@@ -764,3 +764,10 @@ it with the MEDS tools rather than narrowing the event rules.
 
 Design notes: [docs/design.md](docs/design.md). Disease codes and prediction targets:
 [docs/disease_codes.md](docs/disease_codes.md).
+
+## License
+
+The code is under the MIT License ([LICENSE](LICENSE)). Data keeps its own terms: Synthea output is
+free to share, MIMIC-IV may only be used under its PhysioNet data use agreement, and
+`scripts/compare_delphi_code.sh` fetches Delphi-2M's code, which is under the MIT License too (its
+model weights are not, and are not used here).
