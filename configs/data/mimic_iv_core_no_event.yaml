@@ -1,0 +1,8 @@
+# MIMIC-IV diagnoses with Delphi-2M's "no event" tokens: training inserts one every five years on
+# average, and each landmark is read at one placed at the landmark age rather than at the last event
+# before it, often a discharge years earlier. Otherwise the same as mimic_iv_core.yaml; the vocabulary
+# gains one token, so the prepared data has its own directory.
+defaults: [mimic_iv_core.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_core_no_event
+  no_event_years: 5

@@ -1,8 +1,9 @@
 """Synthea → MEDS.
 
 Synthea writes FHIR R4 by default; this adapter reads its CSV export (patients.csv,
-conditions.csv, observations.csv), as written with `--exporter.csv.export true`, either as
-one directory or as chunk directories that each contain a `csv/` folder.
+conditions.csv, observations.csv), as written with `--exporter.csv.export true`: the
+--exporter.baseDirectory Synthea wrote to (its csv/ folder), that csv/ folder itself, or a folder of
+chunk directories that each contain a `csv/` folder.
 
 Every source row becomes one MEDS event. Nothing is binned, deduplicated or filtered for a
 model here; those choices belong to `modlehr prepare`.
@@ -30,11 +31,14 @@ from modlehr import __version__
 
 
 def _csv_dirs(raw_dir: Path) -> list[Path]:
-    if (raw_dir / "patients.csv").exists():
-        return [raw_dir]
+    """The folders holding patients.csv: raw_dir itself, the csv/ folder Synthea writes under
+    --exporter.baseDirectory, or the csv/ folder of each chunk directory."""
+    for d in (raw_dir, raw_dir / "csv"):
+        if (d / "patients.csv").exists():
+            return [d]
     dirs = sorted(p / "csv" for p in raw_dir.iterdir() if (p / "csv" / "patients.csv").exists())
     if not dirs:
-        raise FileNotFoundError(f"no Synthea CSV export found under {raw_dir}")
+        raise FileNotFoundError(f"no Synthea CSV export (patients.csv, conditions.csv, observations.csv) under {raw_dir}")
     return dirs
 
 

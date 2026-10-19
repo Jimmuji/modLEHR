@@ -3,6 +3,8 @@ name = "modlehr"
 version = "0.2.0"
 description = "A flexible framework for modeling longitudinal EHR data in MEDS format"
 readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.11"
 dependencies = [
     "torch>=2.4",

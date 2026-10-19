@@ -7,7 +7,9 @@ share their time with others. `next_target` keeps the first of them (for code th
 `PreparedSplit.subject` rebuilds the full set from `target`. If no target follows, the event is
 censored at the end of follow-up (next_target = -1, dt = years until then).
 
-Follow-up ends at the subject's last event of a rule with follow_up: true (all rules by default),
+Follow-up starts at the subject's first event, or with data.follow_up_from: first_contact at the first
+event of a follow_up rule that is not static; events before it carry no loss, since nothing could have
+been recorded then. It ends at the subject's last event of a rule with follow_up: true (all rules by default),
 and no later than death, counting events that prepare drops later (thinned, repeated or rare ones),
 since they still show the subject was followed then. Events after it (an outpatient measurement after the last admission, say)
 stay in the input but carry no loss, since no outcome could have been recorded then. Only the last
@@ -24,7 +26,7 @@ import pandas as pd
 from modlehr.prepare.vocabulary import Vocabulary
 
 ARRAYS = ("tokens", "ages", "values", "target", "next_target", "dt", "loss_mask")  # one per event
-SUBJECT_ARRAYS = ("follow_up_end",)  # one per subject
+SUBJECT_ARRAYS = ("follow_up_start", "follow_up_end")  # one per subject
 
 
 def follow_up_ends(ages: np.ndarray, follows: np.ndarray, target: np.ndarray, offsets: np.ndarray,
@@ -44,8 +46,9 @@ def follow_up_ends(ages: np.ndarray, follows: np.ndarray, target: np.ndarray, of
 
 def build_split(frame: pd.DataFrame, vocab: Vocabulary) -> dict[str, np.ndarray]:
     """frame: one split, sorted by subject_id then age, with columns subject_id, token_id, age, value,
-    and optionally follow_up_end (per event, its subject's; prepare computes it before dropping any
-    event) or else follow_up (bool, default true), from which it is computed here."""
+    and optionally follow_up_start and follow_up_end (per event, its subject's; prepare computes them
+    before dropping any event) or else follow_up (bool, default true), from which the end is computed
+    here, with follow-up from the first event."""
     subject = frame["subject_id"].to_numpy()
     subjects, starts = np.unique(subject, return_index=True)
     offsets = np.append(starts, len(frame)).astype(np.int64)
@@ -59,6 +62,7 @@ def build_split(frame: pd.DataFrame, vocab: Vocabulary) -> dict[str, np.ndarray]
         end_of = frame["follow_up_end"].to_numpy(np.float32)[starts]
     else:
         end_of = follow_up_ends(ages, follows, target_of, offsets, death)
+    start_of = frame["follow_up_start"].to_numpy(np.float32)[starts] if "follow_up_start" in frame else ages[starts]
 
     n = len(frame)
     next_target = np.full(n, -1, dtype=np.int32)
@@ -66,7 +70,7 @@ def build_split(frame: pd.DataFrame, vocab: Vocabulary) -> dict[str, np.ndarray]
     loss_mask = np.zeros(n, dtype=bool)
     for s in range(len(subjects)):
         a, b = offsets[s], offsets[s + 1]
-        age, tgt, end = ages[a:b], target_of[a:b], end_of[s]
+        age, tgt, end, begin = ages[a:b], target_of[a:b], end_of[s], start_of[s]
         idx = np.flatnonzero((tgt >= 0) & (age <= end))
         if len(idx):
             t_age = age[idx]
@@ -80,12 +84,12 @@ def build_split(frame: pd.DataFrame, vocab: Vocabulary) -> dict[str, np.ndarray]
         last_of_time = np.ones(b - a, dtype=bool)
         last_of_time[:-1] = age[1:] != age[:-1]
         within = age <= end
-        loss_mask[a:b] = last_of_time & within
+        loss_mask[a:b] = last_of_time & within & (age >= begin)
         next_target[a:b][~within] = -1
         dt[a:b][~within] = 0.0
     return {"subject_ids": subjects.astype(np.int64), "offsets": offsets, "tokens": tokens, "ages": ages,
             "values": values, "target": target_of, "next_target": next_target, "dt": dt, "loss_mask": loss_mask,
-            "follow_up_end": end_of}
+            "follow_up_start": start_of, "follow_up_end": end_of}
 
 
 def next_target_sets(ages: np.ndarray, target: np.ndarray, end: float, start: int, stop: int) -> np.ndarray:

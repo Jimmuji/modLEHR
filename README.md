@@ -60,6 +60,7 @@ raw records ──convert──> MEDS ──prepare──> timelines ──train
 | `modlehr generate` | Sample future outcomes for one patient |
 | `modlehr simulate` | Sample one future per held-out patient, cut at the end of the real record, and compare incidence by age with the records |
 | `modlehr delphi` | Delphi-2M's own AUC (by sex and 5-year age band, against patients who never have the disease), to set a model next to Delphi-2M's published numbers |
+| `modlehr export-delphi` | Write a prepared dataset in Delphi-2M's format, with a config for its `train.py`, so its own code trains on the same data; `evaluate` and `delphi` then score its checkpoint (`--delphi-repo`) |
 | `modlehr run` | `prepare` (only if the data config or the MEDS files changed), `train` and `evaluate` in one command |
 | `modlehr compare` | Mean AUC of several runs and the paired difference against the first, averaging over seeds, with 95% intervals over pairs and over seeds |
 
@@ -74,7 +75,7 @@ With [uv](https://docs.astral.sh/uv/):
 git clone https://github.com/Jimmuji/modLEHR.git && cd modLEHR
 uv venv --python 3.13 .venv
 uv pip install --python .venv/bin/python -e ".[dev]"
-.venv/bin/python -m pytest          # 88 tests, about 20 seconds
+.venv/bin/python -m pytest          # 101 tests, about 20 seconds
 ```
 
 With plain pip: `python -m venv .venv && .venv/bin/pip install -e ".[dev]"`.
@@ -245,7 +246,10 @@ event. It does five things, all set in the data config (full reference in
    target is recorded: all the targets recorded then (a discharge often brings several diagnoses
    at once), and the years until it. If none follows, the event is censored at the end of
    follow-up: the subject's last event of a rule with `follow_up: true` (every rule by default),
-   and no later than death. Events after follow-up stay inputs but carry no loss. Only the last
+   and no later than death. Events after follow-up stay inputs but carry no loss. Follow-up starts
+   at the first event; with `follow_up_from: first_contact` it starts at the first event of a
+   follow-up rule that is not static, for records that begin at a first hospital contact, and
+   events before it carry no loss either. Only the last
    event at each distinct time carries a loss, so the model predicts after seeing everything
    recorded at that moment.
 
@@ -297,6 +301,12 @@ censored subjects are dropped. `controls: never` keeps every subject with no rec
 at all, censored or not, which is how Delphi-2M defines controls. Which one is in force changes the
 numbers, so it is written into `evaluate.json` and printed with the mean, and `modlehr baseline`
 reads the same setting.
+
+**"No event" tokens.** By default the score at a landmark is read at the last event before it,
+which can be years earlier, with the rates held constant since. `data.no_event_years: 5` adds
+Delphi-2M's answer: training inserts a "no event" token at a random age every five years on
+average, labelled with the next target from that age, and evaluation reads each landmark at one
+placed at the landmark age.
 
 **Calibration.** At each landmark, the predicted number of targets first occurring in (L, L + H] is
 compared with the number observed. The prediction sums, over targets the patient has not had yet,
@@ -396,10 +406,25 @@ much a run moves with its seed and is too narrow to decide between models. The o
 the one to read: it pairs the seeds both runs have (at least two), or, against a classical
 baseline, uses the other run's seeds alone. A single seeded model run gets none.
 
+### Every variant over seeds
+
 `scripts/compare_synthea.sh` trains the baseline and every variant over seeds 1 to 3, fits the
 classical baselines, and prints the comparison. Each run takes about 7 minutes on Apple MPS, so the
 33 runs (11 variants, 3 seeds) take about four hours; `SEEDS="1" scripts/compare_synthea.sh` runs one
 seed.
+
+### Delphi-2M's own code on the same data
+
+```bash
+scripts/compare_delphi_code.sh --set model.text_encoding=none     # toy data, CPU, about a minute
+CONFIG=configs/experiment/mimic_iv_core_gpt.yaml DEVICE=cuda scripts/compare_delphi_code.sh --seed 1
+```
+
+The script clones Delphi-2M's code at a fixed commit into `external/delphi`, trains modLEHR, writes
+the same prepared data in Delphi's format (`modlehr export-delphi`, with a config of the same size and
+schedule), trains Delphi's `train.py` on it, scores its checkpoint with `modlehr evaluate` and
+`modlehr delphi` (`--delphi-repo`), and compares the two. What the two models share, where they
+differ, and how one format maps to the other: [docs/delphi.md](docs/delphi.md).
 
 ## Data format: MEDS
 
@@ -694,6 +719,7 @@ src/modlehr/
   train/           training loop
   evaluate/        landmark task, AUC, calibration and likelihood, classical baselines, Delphi-2M's AUC,
                    run comparison
+  external/        Delphi-2M's own code on modLEHR data: the export to its format, scoring its checkpoints
   generate/        sampling futures
   registry.py      name → part, for everything that can be swapped
   config.py        experiment configuration and command-line overrides
@@ -701,9 +727,10 @@ src/modlehr/
 scripts/           compare_synthea.sh: every Synthea variant over three seeds; run_mimic_iv.sh: full MIMIC-IV;
                    run_mimic_iv_core.sh: MIMIC-IV diagnoses only; compare_mimic_iv_core.sh: every variant
                    on it over three seeds; fetch_mimic_iv.sh: resume the raw download;
-                   fetch_code_maps.sh: the public GEMs and phecode maps
+                   fetch_code_maps.sh: the public GEMs and phecode maps; compare_delphi_code.sh: Delphi-2M's
+                   own code against modLEHR on the same data
 tests/             unit tests and end-to-end tests on a tiny synthetic MEDS dataset
-docs/              design notes, configuration reference, extension guide, disease codes
+docs/              design notes, configuration reference, extension guide, disease codes, modLEHR and Delphi-2M
 ```
 
 ## Troubleshooting
@@ -737,3 +764,10 @@ it with the MEDS tools rather than narrowing the event rules.
 
 Design notes: [docs/design.md](docs/design.md). Disease codes and prediction targets:
 [docs/disease_codes.md](docs/disease_codes.md).
+
+## License
+
+The code is under the MIT License ([LICENSE](LICENSE)). Data keeps its own terms: Synthea output is
+free to share, MIMIC-IV may only be used under its PhysioNet data use agreement, and
+`scripts/compare_delphi_code.sh` fetches Delphi-2M's code, which is under the MIT License too (its
+model weights are not, and are not used here).

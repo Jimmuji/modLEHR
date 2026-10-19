@@ -37,7 +37,8 @@ def test_overrides_parse_yaml_values():
 
 @pytest.mark.parametrize("bad", ["model.not_a_key=1", "nosection.steps=1", "train.steps", "data.events=[]",
                                  "evaluate.risk=marginl", "evaluate.controls=nevr", "evaluate.landmarks=50",
-                                 "evaluate.horizon_years=0", "data.value_mode=bins", "train.precision=fp16"])
+                                 "evaluate.horizon_years=0", "data.value_mode=bins", "train.precision=fp16",
+                                 "data.follow_up_from=birth", "data.no_event_years=0"])
 def test_bad_overrides_fail(bad):
     with pytest.raises(ValueError):
         apply_overrides(load_config(CONFIG), [bad])
@@ -400,3 +401,15 @@ def test_readme_lists_every_command():
     readme = (Path(__file__).resolve().parents[1] / "README.md").read_text()
     table = readme[readme.index("| Command |"):readme.index("## Installation")]
     assert [c for c in commands if f"`modlehr {c}" not in table] == []
+
+
+def test_scripts_parse():
+    """Every shell script and job file in scripts/ is valid bash."""
+    import subprocess
+
+    scripts = sorted((Path(__file__).resolve().parents[1] / "scripts").rglob("*.sh")) + \
+        sorted((Path(__file__).resolve().parents[1] / "scripts").rglob("*.sbatch"))
+    assert scripts
+    for path in scripts:
+        result = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
+        assert result.returncode == 0, f"{path.name}: {result.stderr}"

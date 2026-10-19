@@ -2,6 +2,40 @@
 
 ## Unreleased
 
+Delphi-2M's own code on the same data
+- `modlehr export-delphi` writes a prepared dataset in Delphi-2M's format (`train.bin`, `val.bin`,
+  `test.bin`, `labels.csv`) with a `delphi_config.py` of the modLEHR run's size and schedule, so
+  Delphi's `train.py` trains on the same subjects, events and splits. Records end at the end of
+  follow-up, closed by a "no event" token when follow-up ends after the last event written
+- `modlehr evaluate` and `modlehr delphi` score a checkpoint of Delphi's `train.py` with
+  `--delphi-repo`, the clone of its code: its rates per day for the modLEHR targets, per year, read
+  at a "no event" token placed at each landmark. `modlehr delphi --out-dir` picks where it writes
+- `scripts/compare_delphi_code.sh` runs the whole comparison: modLEHR, the export, Delphi's training,
+  both scored the same way, `modlehr compare`. On the toy data it takes about a minute on a CPU
+- docs/delphi.md: what modLEHR's plain GPT shares with Delphi-2M and where the two differ
+
+Follow-up from the first contact
+- `data.follow_up_from: first_contact` starts follow-up at a subject's first event of a `follow_up`
+  rule that is not static (MIMIC-IV's first admission) instead of the first event (the sex token at
+  age 0). Events before it carry no loss, and a landmark task only includes subjects followed by the
+  landmark; prepared splits store `follow_up_start`. Off by default, so prepared data and results
+  do not change; `configs/experiment/mimic_iv_core_gpt_first_contact.yaml` runs it on MIMIC-IV
+
+"No event" tokens
+- `data.no_event_years`: Delphi-2M's "no event" tokens. Training inserts one at a random age every
+  this many years on average (Delphi-2M: 5), between a window's first and last events and within
+  follow-up, each labelled with the next target from its own age; tuning windows get them too.
+  `evaluate`, `generate` and `simulate` then ask at one placed at the landmark or start age instead
+  of reading the last event before it, often years earlier. Off by default
+
+Licence
+- The code is under the MIT License (`LICENSE`, and `license` in pyproject.toml)
+
+Fixes
+- `modlehr convert synthea --raw-dir` reads the folder given to Synthea as `--exporter.baseDirectory`,
+  as the README's walkthrough does; it looked only in that folder and in chunk folders, not in the
+  `csv/` folder Synthea writes there, and stopped with "no Synthea CSV export found"
+
 Fixes from an external code review (all six of its hypotheses held up)
 - Targets recorded at the same time are all labels of that time. Before, only the first (in token
   order) was, so on MIMIC-IV, where every diagnosis of an admission is timed at its discharge,

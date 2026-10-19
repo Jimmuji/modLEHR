@@ -63,6 +63,17 @@ class DataConfig:
     n_bins: int = 3
     text_buckets: int = 65536  # text: words are hashed into this many buckets
     text_max_words: int = 256  # text: words kept per note, from the start
+    # Where a subject's follow-up starts. first_event: at the first event of any rule, so at age 0 when a
+    # static fact (sex) is recorded. first_contact: at the first event of a follow_up rule other than a
+    # static one, for sources whose records begin at a first contact (MIMIC-IV's first admission): before
+    # it nothing could have been recorded, so earlier events carry no loss, and a landmark task needs the
+    # subject followed by the landmark.
+    follow_up_from: str = "first_event"
+    # Delphi-2M's "no event" tokens: training inserts one at a random age every this many years on
+    # average (Delphi-2M: 5), each labelled with the next target from that age, so the model learns
+    # rates at times with no event; evaluation and sampling then ask at a "no event" token placed at
+    # the landmark or start age. Off (null) by default.
+    no_event_years: float | None = None
 
 
 @dataclass
@@ -177,7 +188,8 @@ def _rule(raw: Any) -> EventRule:
 
 # Values checked when a config is loaded, so a typo fails before any work is done rather than at the
 # stage that reads it (a misspelt evaluate.risk would otherwise fail after training).
-CHOICES = {("data", "value_mode"): ("continuous", "binned", "none"), ("train", "precision"): ("fp32", "bf16"),
+CHOICES = {("data", "value_mode"): ("continuous", "binned", "none"), ("data", "follow_up_from"): ("first_event", "first_contact"),
+           ("train", "precision"): ("fp32", "bf16"),
            ("evaluate", "controls"): ("at_risk", "never"), ("evaluate", "risk"): ("marginal", "next_event")}
 
 
@@ -189,6 +201,8 @@ def check(cfg: Config) -> Config:
     landmarks = cfg.evaluate.landmarks
     if not isinstance(landmarks, list) or not all(isinstance(a, (int, float)) for a in landmarks):
         raise ValueError(f"evaluate.landmarks must be a list of ages, e.g. [40, 50, 60], not {landmarks!r}")
+    if cfg.data.no_event_years is not None and not cfg.data.no_event_years > 0:
+        raise ValueError(f"data.no_event_years must be positive, or null for none, not {cfg.data.no_event_years!r}")
     if not cfg.evaluate.horizon_years > 0:
         raise ValueError(f"evaluate.horizon_years must be positive, not {cfg.evaluate.horizon_years!r}")
     return cfg

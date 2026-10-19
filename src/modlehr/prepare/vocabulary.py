@@ -15,6 +15,7 @@ from pathlib import Path
 import numpy as np
 
 PAD = "<pad>"
+NO_EVENT = "MODLEHR//NO_EVENT"  # Delphi-2M's "no event" token, in the vocabulary when data.no_event_years is set
 
 
 @dataclass

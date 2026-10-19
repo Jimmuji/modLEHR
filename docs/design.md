@@ -35,7 +35,10 @@ a role:
 | text | a note | the code, plus its words for the text encoding |
 
 Every rule also says whether its events extend follow-up (`follow_up`, true by default). Follow-up
-ends at a subject's last such event, and no later than death. Outpatient measurements in a source
+ends at a subject's last such event, and no later than death. It starts at the first event, or with
+`follow_up_from: first_contact` at the first such event of a rule that is not static: a MIMIC-IV
+record begins at the first admission, and counting from the sex token at age 0 would treat the years
+before it as observed and free of disease. Outpatient measurements in a source
 whose diagnoses come only from admissions are the case for `follow_up: false`: a reading after the
 last admission must not make a subject look followed when no diagnosis could have been recorded.
 

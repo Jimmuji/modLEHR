@@ -42,28 +42,43 @@ from sklearn.metrics import roc_auc_score
 
 from modlehr.config import Config, ModelConfig
 from modlehr.evaluate.task import history_before, landmark_task, split_first_ages, summarize
+from modlehr.external.delphi import DelphiModel, is_delphi_checkpoint
 from modlehr.model.model import ModLEHR
 from modlehr.prepare.dataset import PreparedSplit, collate, open_split
-from modlehr.prepare.vocabulary import Vocabulary
+from modlehr.prepare.vocabulary import NO_EVENT, Vocabulary
 from modlehr.track import Tracker
 from modlehr.train.loop import pick_device, to_device
 
 
-def load_model(checkpoint: str | Path, prepared_dir: Path, device: torch.device) -> tuple[ModLEHR, Vocabulary]:
+def load_model(checkpoint: str | Path, prepared_dir: Path, device: torch.device,
+               delphi_repo: str | Path | None = None) -> tuple[ModLEHR, Vocabulary]:
+    """A modLEHR checkpoint, or one of Delphi-2M's train.py (with delphi_repo, a clone of its code)."""
     state = torch.load(checkpoint, map_location="cpu", weights_only=False)
     vocab = Vocabulary.load(prepared_dir / "vocab.json")
+    if is_delphi_checkpoint(state):
+        if delphi_repo is None:
+            raise ValueError(f"{checkpoint} is a checkpoint of Delphi-2M's own code; pass --delphi-repo, the clone "
+                             "of github.com/gerstung-lab/Delphi it was trained with")
+        return DelphiModel(delphi_repo, state, vocab).to(device).eval(), vocab
     meta = json.loads((Path(prepared_dir) / "prepare.json").read_text())
     model = ModLEHR(ModelConfig(**state["model_config"]), n_tokens=len(vocab.tokens), n_targets=len(vocab.targets),
                     n_text_buckets=meta.get("text_buckets", 0))
     model.load_state_dict(state["model"])
+    if NO_EVENT in vocab.token_index:  # trained with "no event" tokens: ask at one, placed at the landmark
+        model.query_token = vocab.token_index[NO_EVENT]
     return model.to(device).eval(), vocab
 
 
 @torch.no_grad()
 def landmark_outputs(model: ModLEHR, split: PreparedSplit, subjects: np.ndarray, landmark: float, batch_size: int,
                      device: torch.device) -> torch.Tensor:
-    """[len(subjects), n_targets] the head's output (log-rates) at each subject's last event at or before the landmark."""
-    rows = [history_before(split, i, landmark, model.cfg.max_len) for i in subjects]
+    """[len(subjects), n_targets] the head's output (log-rates) at each subject's last event at or before the
+    landmark. A model with a query_token (Delphi-2M's "no event", for a Delphi checkpoint or a model trained with
+    data.no_event_years) is read at that token, placed at the landmark."""
+    query = getattr(model, "query_token", None)
+    rows = [history_before(split, i, landmark, model.cfg.max_len - (query is not None)) for i in subjects]
+    if query is not None:
+        rows = [with_event(r, query, landmark) for r in rows]
     outputs = []
     for b in range(0, len(rows), batch_size):
         chunk = rows[b:b + batch_size]
@@ -71,6 +86,12 @@ def landmark_outputs(model: ModLEHR, split: PreparedSplit, subjects: np.ndarray,
         last = torch.tensor([len(r["tokens"]) - 1 for r in chunk], device=device)
         outputs.append(out[torch.arange(len(chunk), device=device), last].float().cpu())
     return torch.cat(outputs) if outputs else torch.zeros((0, model.head.proj.out_features))
+
+
+def with_event(row: dict, token: int, age: float) -> dict:
+    """The row with one more event, without a value or a label, at its end."""
+    extra = {"tokens": token, "ages": age, "values": np.nan, "target": -1, "next_target": -1, "dt": 0.0, "loss_mask": False}
+    return {k: np.append(v, np.asarray(extra[k], dtype=v.dtype)) if k in extra else v for k, v in row.items()}
 
 
 def observed_probabilities(model: ModLEHR, outputs: torch.Tensor, horizon: float, death: int | None) -> np.ndarray:
@@ -148,10 +169,11 @@ def calibration(task, risk: np.ndarray, death: int | None) -> tuple[dict, pd.Dat
     return summary, table.drop(columns="bin")
 
 
-def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = None, log=print) -> pd.DataFrame:
+def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = None, log=print,
+             delphi_repo: str | Path | None = None) -> pd.DataFrame:
     prepared = Path(cfg.data.prepared_dir)
     device = pick_device(cfg.train.device)
-    model, vocab = load_model(checkpoint, prepared, device)
+    model, vocab = load_model(checkpoint, prepared, device, delphi_repo)
     split = open_split(prepared, cfg.evaluate.split)
     first = split_first_ages(split, vocab)
     H, min_cases = cfg.evaluate.horizon_years, cfg.evaluate.min_cases
@@ -160,12 +182,13 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
     rows, calib, calib_tables = [], [], []
     for L in cfg.evaluate.landmarks:
         task = landmark_task(split, vocab, L, H, first, cfg.evaluate.controls)
+        if not len(task.subjects):
+            continue
         outputs = landmark_outputs(model, split, task.subjects, L, cfg.evaluate.batch_size, device)
         risk = model.head.risk(outputs, H, cfg.evaluate.risk).numpy()
-        if len(task.subjects):
-            c_summary, c_table = calibration(task, observed_probabilities(model, outputs, H, death), death)
-            calib.append(c_summary)
-            calib_tables.append(c_table)
+        c_summary, c_table = calibration(task, observed_probabilities(model, outputs, H, death), death)
+        calib.append(c_summary)
+        calib_tables.append(c_table)
         for k, name in enumerate(vocab.targets):
             keep, case = task.labels(k)
             n_case, n_ctrl = int(case[keep].sum()), int((~case[keep]).sum())

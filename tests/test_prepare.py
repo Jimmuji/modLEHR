@@ -5,6 +5,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
+import pytest
 import pandas as pd
 
 from modlehr.config import load_config
@@ -308,3 +309,93 @@ def test_splits_written_before_tied_labels_still_load(tiny_config):
     np.testing.assert_array_equal(split.follow_up_end, ages[split.offsets[1:] - 1])
     row = split.subject(0)
     assert "next_set" not in row and "next_set" not in collate([row])
+
+
+@pytest.mark.parametrize("start_from, start, loss_before", [("first_event", 0.0, True), ("first_contact", 50.0, False)])
+def test_follow_up_from_the_first_contact(tmp_path, start_from, start, loss_before):
+    """With follow_up_from: first_contact, follow-up starts at the first admission, not at the sex
+    recorded at age 0 nor at an outpatient reading (follow_up: false) before it: those events carry no
+    loss, and a landmark before the first admission leaves the subject out."""
+    from conftest import write_meds
+    from modlehr.config import DataConfig, EventRule
+    from modlehr.evaluate.task import landmark_task
+
+    rows = []
+    for s in range(30):
+        rows += [(s, None, "GENDER//F", None), (s, 30.0, "BMI", 25.0), (s, 50.0, "ADM", None),
+                 (s, 50.5, "DX//A", None), (s, 58.0, "ADM", None), (s, 58.5, "DX//B", None)]
+    cfg = DataConfig(meds_dir=str(write_meds(tmp_path / "meds", rows)), prepared_dir=str(tmp_path / "prepared"),
+                     min_subjects_per_token=5, value_mode="none", follow_up_from=start_from,
+                     events=[EventRule(name="sex", role="static", prefix="GENDER//"),
+                             EventRule(name="dx", role="target", prefix="DX//"),
+                             EventRule(name="adm", role="context", codes=["ADM"]),
+                             EventRule(name="bmi", role="measurement", codes=["BMI"], follow_up=False)])
+    run_prepare(cfg, log=lambda *_: None)
+    split = open_split(cfg.prepared_dir, "train")
+    vocab = Vocabulary.load(Path(cfg.prepared_dir) / "vocab.json")
+    np.testing.assert_allclose(split.follow_up_start, start, atol=1e-4)
+    row = split.subject(0)
+    assert list(row["loss_mask"][:2]) == [loss_before, loss_before] and row["loss_mask"][2]  # sex, BMI, then ADM
+    assert (len(landmark_task(split, vocab, 45.0, 2.0).subjects) == 30) == (start_from == "first_event")
+    assert len(landmark_task(split, vocab, 52.0, 2.0).subjects) == 30
+
+
+def test_no_event_tokens_are_labelled_from_their_own_age(tmp_path):
+    """A "no event" token at age a gets every target of the next target time after a and the years
+    until it (or until the end of follow-up), carries a loss, and leaves the real events as they were."""
+    from modlehr.prepare.dataset import SplitWriter, with_no_events
+    from modlehr.prepare.timeline import next_target_sets
+
+    vocab = Vocabulary.build(["GENDER//F", "ADM", "NO_EVENT"], ["D1", "D2", "D3"])
+    t = vocab.token_index
+    events = [("GENDER//F", 0.0), ("ADM", 40.0), ("D1", 40.5), ("D2", 40.5), ("ADM", 47.0), ("D3", 47.2), ("ADM", 60.0)]
+    frame = pd.DataFrame({"subject_id": 0, "token_id": [t[e] for e, _ in events], "age": [a for _, a in events],
+                          "value": np.nan})
+    writer = SplitWriter(tmp_path / "split")
+    writer.append(build_split(frame, vocab))
+    writer.close()
+    split = open_split(tmp_path, "split")
+    row = split.subject(0)
+    out = with_no_events(row, t["NO_EVENT"], 2.0, np.random.default_rng(0), float(split.follow_up_start[0]),
+                         float(split.follow_up_end[0]), max_len=64)
+    added = out["tokens"] == t["NO_EVENT"]
+    assert added.sum() > 10 and np.all(np.diff(out["ages"]) >= 0)
+    assert np.array_equal(out["tokens"][~added], row["tokens"]) and np.array_equal(out["dt"][~added], row["dt"])
+    a = out["ages"][added]
+    assert np.all((a >= 0.0) & (a <= 60.0)) and out["loss_mask"][added].all()
+    full = np.asarray(split.arrays["ages"]), np.asarray(split.arrays["target"])
+    for age, labels, dt in zip(a, out["next_set"][added], out["dt"][added]):
+        expected = next_target_sets(np.r_[full[0], age], np.r_[full[1], -1], 60.0, len(full[0]), len(full[0]) + 1)[0]
+        assert set(labels[labels >= 0].tolist()) == set(expected[expected >= 0].tolist())
+        later = full[0][(full[1] >= 0) & (full[0] > age)]
+        assert dt == pytest.approx((later.min() if len(later) else 60.0) - age, abs=1e-4)
+    short = with_no_events(row, t["NO_EVENT"], 0.5, np.random.default_rng(1), 0.0, 60.0, max_len=10)
+    assert len(short["tokens"]) == 10 and short["ages"][-1] == 60.0  # the last max_len events are kept
+
+
+def test_training_with_no_event_tokens(tiny_config):
+    """With data.no_event_years the vocabulary holds the token, training inserts it, and evaluation and
+    sampling ask at one placed at the landmark or start age."""
+    import json
+
+    from modlehr.evaluate.run import evaluate, load_model
+    from modlehr.generate.sample import sample_future
+    from modlehr.prepare.vocabulary import NO_EVENT
+    from modlehr.train.loop import train
+
+    run_prepare(tiny_config.data, log=lambda *_: None)
+    tiny_config.data.no_event_years = 5.0
+    with pytest.raises(ValueError, match="prepare"):  # prepared without the token
+        train(tiny_config, log=lambda *_: None)
+    run_prepare(tiny_config.data, log=lambda *_: None)
+    prepared = Path(tiny_config.data.prepared_dir)
+    vocab = Vocabulary.load(prepared / "vocab.json")
+    assert NO_EVENT in vocab.tokens and NO_EVENT not in vocab.targets
+    best = train(tiny_config, log=lambda *_: None)
+    model, _ = load_model(best, prepared, "cpu")
+    assert model.query_token == vocab.token_index[NO_EVENT]
+    evaluate(tiny_config, best, log=lambda *_: None)
+    assert json.loads((Path(tiny_config.train.out_dir) / "evaluate.json").read_text())["pairs"] > 0
+    history = open_split(prepared, "held_out").subject(0)
+    events = sample_future(model, vocab, history, start_age=50.0, horizon_years=30.0, seed=1)
+    assert all(50.0 < age <= 80.0 and token in vocab.targets for age, token in events)
