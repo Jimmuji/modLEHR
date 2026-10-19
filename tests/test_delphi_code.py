@@ -152,3 +152,17 @@ def test_a_delphi_checkpoint_is_scored_like_a_modlehr_model(tiny_config, tmp_pat
     evaluate(tiny_config, checkpoint, log=QUIET, delphi_repo=repo)
     summary = json.loads((Path(tiny_config.train.out_dir) / "evaluate.json").read_text())
     assert summary["pairs"] > 0 and "calibration" in summary and "likelihood" in summary
+
+    # Delphi-2M's AUC with --query gap asks at a "no event" token after each point's history
+    from modlehr.evaluate.delphi import delphi_auc, log_rates_with_query
+
+    delphi_auc(tiny_config, checkpoint, 0.1, tmp_path / "gap.csv", log=QUIET, delphi_repo=repo,
+               points_dir=tmp_path / "points", query="gap")
+    assert json.loads((tmp_path / "gap.json").read_text())["query"] == "gap"
+    seen.clear()
+    log_rates_with_query(model, split, np.array([[0, 1, 55.0], [1, 2, 61.5]]), 8, "cpu")
+    idx, age = seen[0]
+    last = (idx > 0).sum(dim=1) - 1
+    rows = torch.arange(len(idx))
+    assert torch.all(idx[rows, last] == NO_EVENT + 1)
+    assert torch.allclose(age[rows, last], torch.tensor([55.0, 61.5]) * 365.25)

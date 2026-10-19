@@ -83,6 +83,11 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--gap-days", default="0.1,365.25",
                            help="comma-separated gaps before each diagnosis; Delphi-2M reports 0.1 day and one year")
             p.add_argument("--out-dir", help="default: <train.out_dir>")
+            p.add_argument("--points-dir", help="share prediction points between models: read them from here, or draw "
+                           "and write them here first (they name patients, so keep them with the data)")
+            p.add_argument("--query", choices=["event", "gap"], default="event",
+                           help="read the model at the event a point predicts from, or at a \"no event\" token "
+                           "placed one gap before the diagnosis (models with that token only)")
         if name == "baseline":
             p.add_argument("--models", default="logistic,gbm", help="comma-separated: logistic, gbm")
             p.add_argument("--gbm-features", type=int, default=2000,
@@ -181,8 +186,10 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "delphi":
         from modlehr.evaluate.delphi import delphi_auc
         for gap in (float(g) for g in args.gap_days.split(",") if g.strip()):
-            out = Path(args.out_dir or cfg.train.out_dir) / f"evaluate_delphi_gap{gap:g}d.csv"
-            delphi_auc(cfg, checkpoint, gap, out, seed=cfg.train.seed, delphi_repo=args.delphi_repo)
+            suffix = "" if args.query == "event" else f"_{args.query}"
+            out = Path(args.out_dir or cfg.train.out_dir) / f"evaluate_delphi_gap{gap:g}d{suffix}.csv"
+            delphi_auc(cfg, checkpoint, gap, out, seed=cfg.train.seed, delphi_repo=args.delphi_repo,
+                       points_dir=args.points_dir, query=args.query)
     elif args.command == "simulate":
         from modlehr.generate.simulate import simulate
         simulate(cfg, checkpoint, args.start_age, args.subjects, args.out_dir, seed=cfg.train.seed)

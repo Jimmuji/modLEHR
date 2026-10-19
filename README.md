@@ -375,13 +375,22 @@ averaged over bands per disease and sex. The gaps are 0.1 day and one year by de
 
 ```console
 $ modlehr delphi --config configs/experiment/toy_gpt.yaml
-[delphi] gap 0.1 days: female 0.611 over 4 diseases, male 0.639 over 4 diseases → runs/toy_gpt/evaluate_delphi_gap0.1d.csv
+[delphi] gap 0.1 days, query at event: female 0.611 over 4 diseases, male 0.639 over 4 diseases → runs/toy_gpt/evaluate_delphi_gap0.1d.csv
 ```
 
 This is not the main task: a case's prediction point is chosen by when the diagnosis happened, and
 with a short gap it is usually the admission of the same hospital stay, so the score mixes
 forecasting with recognising a patient already in hospital. Report it next to the landmark AUC,
 not in its place.
+
+To compare models, score them all on one set of prediction points with `--points-dir DIR`. The
+first model to need them draws them from the data (with seed 0, whatever the model's seed) and
+writes them there; every later model reads them, and is refused if its data differ. Every model is
+then scored on the same diseases, cases, controls and times, which a model on its own prepared data
+(one trained with "no event" tokens, or Delphi-2M's own code) would not otherwise guarantee. The
+points name patients and ages, so keep the directory with the data, not with the results you share.
+A model with a "no event" token can also be asked at one placed a gap before each diagnosis, after
+the same history (`--query gap`), to see what knowing the current age adds.
 
 ## Running and comparing experiments
 

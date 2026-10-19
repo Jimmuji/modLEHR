@@ -40,6 +40,20 @@ Biobank with a gap of 0.1 day. Those numbers come from a cohort with self-report
 registry follow-up; MIMIC-IV is one hospital's admissions, whose records start at the first stay and
 end at the last, so the same model is not expected to score the same.
 
+## Scoring several models on the same points
+
+`modlehr delphi --points-dir DIR` shares one set of prediction points between models: diseases,
+cases, controls, each point's event and its age band. They are drawn once, from the data alone, and
+checked against each model's split by a fingerprint of the subjects, event ages, follow-up and first
+diagnoses (token ids are left out, so data prepared with a "no event" token still matches). So a
+difference between two models' scores comes from the models, not from who was scored.
+
+On the same points, `--query gap` reads a model with a "no event" token (a modLEHR model trained
+with `data.no_event_years`, or Delphi-2M's own code) at one placed at (diagnosis - gap), or for a
+control at (its anchor event - gap), after the same history. That is close to how Delphi-2M itself
+is read: its "no event" tokens fill the time since the last event, so the model knows how long ago
+that was. `--query event` (the default) reads every model at the last event.
+
 ## Delphi-2M's own code on modLEHR's data
 
 ```bash

@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+Delphi-2M's AUC on shared points
+- `modlehr delphi --points-dir` draws the prediction points once (diseases, cases, controls, times) and
+  scores every later model on them, refusing data that differ (a fingerprint of subjects, ages,
+  follow-up and first diagnoses). Without it the points are drawn as before: the same table, tested
+- `--query gap` reads a model with a "no event" token at one placed a gap before each diagnosis
+- scripts/fir: delphi.sbatch and delphi_code.sbatch score every run on runs/delphi_points/mimic_iv_core;
+  rerun_all.sh adds Delphi-2M's AUC for every run it trains
+
 Delphi-2M's own code on the same data
 - `modlehr export-delphi` writes a prepared dataset in Delphi-2M's format (`train.bin`, `val.bin`,
   `test.bin`, `labels.csv`) with a `delphi_config.py` of the modLEHR run's size and schedule, so

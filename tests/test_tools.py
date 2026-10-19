@@ -361,6 +361,38 @@ def test_delphi_auc_runs_end_to_end(tiny_config):
     assert summary["gap_days"] == 0.1 and 0 < summary["mean_auc"] < 1
 
 
+def test_delphi_points_are_shared_between_models(tiny_config, tmp_path):
+    """Points written once are read by every later model: a model trained with "no event" tokens, on its
+    own prepared data, is scored on the same diseases, cases and controls, at events or at a "no event"
+    query. Points from another split are refused."""
+    from modlehr.evaluate.delphi import delphi_auc
+
+    run_prepare(tiny_config.data, log=QUIET)
+    best = train(tiny_config, log=QUIET)
+    points = tmp_path / "points"
+    first = delphi_auc(tiny_config, best, 0.1, tmp_path / "a.csv", log=QUIET, points_dir=points)
+    assert (points / "points_gap0.1d.parquet").exists() and len(first)
+    again = delphi_auc(tiny_config, best, 0.1, tmp_path / "b.csv", seed=5, log=QUIET, points_dir=points)
+    pd.testing.assert_frame_equal(first, again)  # read back, not drawn again with the other seed
+    with pytest.raises(ValueError, match="no event"):
+        delphi_auc(tiny_config, best, 0.1, tmp_path / "c.csv", log=QUIET, points_dir=points, query="gap")
+
+    other = copy.deepcopy(tiny_config)
+    other.data.no_event_years, other.data.prepared_dir = 5.0, str(tmp_path / "prepared_no_event")
+    other.train.out_dir = str(tmp_path / "run_no_event")
+    run_prepare(other.data, log=QUIET)
+    best_no_event = train(other, log=QUIET)
+    keys = ["target", "sex", "age_band", "cases", "controls"]
+    for query in ("event", "gap"):
+        table = delphi_auc(other, best_no_event, 0.1, tmp_path / f"{query}.csv", log=QUIET, points_dir=points, query=query)
+        pd.testing.assert_frame_equal(table[keys], first[keys])
+
+    tuning = copy.deepcopy(tiny_config)
+    tuning.evaluate.split = "tuning"
+    with pytest.raises(ValueError, match="other data"):
+        delphi_auc(tuning, best, 0.1, tmp_path / "d.csv", log=QUIET, points_dir=points)
+
+
 def test_delphi_band_aucs_match_a_plain_loop():
     """band_aucs reads each target's rows from sorted cases and controls; a plain loop over every
     (target, sex, band), masking all rows each time, gives the same table."""
