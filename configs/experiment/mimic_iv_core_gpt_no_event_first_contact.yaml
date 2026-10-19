@@ -1,0 +1,6 @@
+# The plain GPT on MIMIC-IV diagnoses with "no event" tokens and follow-up from the first hospital
+# contact (configs/data/mimic_iv_core_no_event_first_contact.yaml), against
+# mimic_iv_core_gpt_first_contact.yaml, which has the same landmark tasks.
+defaults: [mimic_iv_core_gpt.yaml, ../data/mimic_iv_core_no_event_first_contact.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_no_event_first_contact

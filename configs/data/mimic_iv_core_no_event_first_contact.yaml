@@ -1,0 +1,7 @@
+# MIMIC-IV diagnoses with Delphi-2M's "no event" tokens and follow-up from the first hospital contact:
+# the tokens then fall only inside the stretch a hospital record can observe, not between birth and the
+# first admission (with follow-up from birth most of them did). Otherwise the same as mimic_iv_core.yaml.
+defaults: [mimic_iv_core_first_contact.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_core_no_event_first_contact
+  no_event_years: 5
