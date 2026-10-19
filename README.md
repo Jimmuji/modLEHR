@@ -392,6 +392,11 @@ points name patients and ages, so keep the directory with the data, not with the
 A model with a "no event" token can also be asked at one placed a gap before each diagnosis, after
 the same history (`--query gap`), to see what knowing the current age adds.
 
+Delphi-2M predicts only ICD-10 chapters I to XVII (A00 to Q99) and death; MIMIC-IV's hospital codes
+also hold symptoms (R), injuries (S, T), external causes (V to Y) and Z codes. `--targets
+configs/targets/delphi2m.txt` adds the means over Delphi-2M's diseases to the summary, for a
+comparison over the diseases both predict.
+
 ## Running and comparing experiments
 
 ```bash

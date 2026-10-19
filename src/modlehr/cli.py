@@ -85,6 +85,8 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--out-dir", help="default: <train.out_dir>")
             p.add_argument("--points-dir", help="share prediction points between models: read them from here, or draw "
                            "and write them here first (they name patients, so keep them with the data)")
+            p.add_argument("--targets", help="a file of target names, one per line (e.g. configs/targets/delphi2m.txt): "
+                           "also report the means over those targets only")
             p.add_argument("--query", choices=["event", "gap"], default="event",
                            help="read the model at the event a point predicts from, or at a \"no event\" token "
                            "placed one gap before the diagnosis (models with that token only)")
@@ -189,7 +191,7 @@ def main(argv: list[str] | None = None) -> None:
             suffix = "" if args.query == "event" else f"_{args.query}"
             out = Path(args.out_dir or cfg.train.out_dir) / f"evaluate_delphi_gap{gap:g}d{suffix}.csv"
             delphi_auc(cfg, checkpoint, gap, out, seed=cfg.train.seed, delphi_repo=args.delphi_repo,
-                       points_dir=args.points_dir, query=args.query)
+                       points_dir=args.points_dir, query=args.query, targets_file=args.targets)
     elif args.command == "simulate":
         from modlehr.generate.simulate import simulate
         simulate(cfg, checkpoint, args.start_age, args.subjects, args.out_dir, seed=cfg.train.seed)

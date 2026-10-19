@@ -54,6 +54,13 @@ control at (its anchor event - gap), after the same history. That is close to ho
 is read: its "no event" tokens fill the time since the last event, so the model knows how long ago
 that was. `--query event` (the default) reads every model at the last event.
 
+Delphi-2M's diseases are the ICD-10 three-character categories of chapters I to XVII (A00 to Q99),
+1,254 of them, plus death. On MIMIC-IV diagnoses (1,018 targets), 660 of the 970 ICD-10 targets are
+among them; the rest are symptoms (R), injuries and poisonings (S, T), external causes (V to Y) and
+Z codes, and 47 ICD-9 codes stay unmapped. `--targets configs/targets/delphi2m.txt` adds the means
+over the listed targets to the summary, so the comparison with Delphi-2M's numbers is over the
+diseases both predict.
+
 ## Delphi-2M's own code on modLEHR's data
 
 ```bash

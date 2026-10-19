@@ -7,6 +7,8 @@ Delphi-2M's AUC on shared points
   scores every later model on them, refusing data that differ (a fingerprint of subjects, ages,
   follow-up and first diagnoses). Without it the points are drawn as before: the same table, tested
 - `--query gap` reads a model with a "no event" token at one placed a gap before each diagnosis
+- `--targets FILE` adds the means over a list of targets; configs/targets/delphi2m.txt lists
+  Delphi-2M's 1,254 ICD-10 categories (chapters I to XVII) and death
 - scripts/fir: delphi.sbatch and delphi_code.sbatch score every run on runs/delphi_points/mimic_iv_core;
   rerun_all.sh adds Delphi-2M's AUC for every run it trains
 

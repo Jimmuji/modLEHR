@@ -239,13 +239,18 @@ QUERIES = ("event", "gap")
 
 def delphi_auc(cfg: Config, checkpoint: str | Path, gap_days: float, out_csv: str | Path | None = None,
                seed: int = 0, log=print, delphi_repo: str | Path | None = None,
-               points_dir: str | Path | None = None, query: str = "event") -> pd.DataFrame:
+               points_dir: str | Path | None = None, query: str = "event",
+               targets_file: str | Path | None = None) -> pd.DataFrame:
     """Delphi-2M's AUC for one checkpoint and gap. points_dir shares one set of prediction points between
     models (points_for), so every model is scored on the same diseases, cases, controls and times.
 
     query: "event" reads the model at the event each point predicts from; "gap" appends the model's "no
     event" token at (anchor - gap), the latest time the point may use, so the model knows how long it
-    has been since that event (a model trained with data.no_event_years, or Delphi-2M's own code)."""
+    has been since that event (a model trained with data.no_event_years, or Delphi-2M's own code).
+
+    targets_file: a list of target names, one per line (# for comments), such as
+    configs/targets/delphi2m.txt; the summary then also gives the means over the listed targets only.
+    The table keeps every target."""
     from modlehr.evaluate.run import load_model
 
     if query not in QUERIES:
@@ -306,14 +311,23 @@ def delphi_auc(cfg: Config, checkpoint: str | Path, gap_days: float, out_csv: st
     by_band = band_aucs(vocab.targets, first, sex, cases, controls)
     per_disease = by_band.groupby(["target", "sex"]).agg(auc=("auc", "mean"), bands=("auc", "size"),
                                                          cases=("cases", "sum")).reset_index()
+    def by_sex(table: pd.DataFrame) -> tuple[dict, dict]:
+        return ({sx: {"mean_auc": float(g["auc"].mean()), "diseases": int(len(g))} for sx, g in table.groupby("sex")},
+                {sx: float(g.loc[g["cases"] >= 25, "auc"].mean()) for sx, g in table.groupby("sex")})
+
     summary = {"gap_days": gap_days, "split": cfg.evaluate.split, "checkpoint": str(checkpoint), "query": query,
                "points_fingerprint": meta["fingerprint"], "points": meta.get("points"),
                "definition": "Delphi-2M evaluate_auc_pipeline: per (disease, sex) mean AUC over 5-year age bands",
-               "by_sex": {sx: {"mean_auc": float(g["auc"].mean()), "diseases": int(len(g))}
-                          for sx, g in per_disease.groupby("sex")},
+               "by_sex": by_sex(per_disease)[0],
                "mean_auc": float(per_disease["auc"].mean()) if len(per_disease) else None,
-               "diseases_with_25_cases": {sx: float(g.loc[g["cases"] >= 25, "auc"].mean())
-                                          for sx, g in per_disease.groupby("sex")}}
+               "diseases_with_25_cases": by_sex(per_disease)[1]}
+    if targets_file:
+        listed = {line.strip() for line in Path(targets_file).read_text().splitlines()
+                  if line.strip() and not line.startswith("#")}
+        mine = per_disease[per_disease["target"].isin(listed)]
+        summary["targets"] = {"file": str(targets_file), "listed": len(listed),
+                              "in_vocabulary": len(listed & set(vocab.targets)),
+                              "by_sex": by_sex(mine)[0], "diseases_with_25_cases": by_sex(mine)[1]}
     out_csv = Path(out_csv) if out_csv else Path(cfg.train.out_dir) / f"evaluate_delphi_gap{gap_days:g}d.csv"
     out_csv.parent.mkdir(parents=True, exist_ok=True)
     by_band.to_csv(out_csv, index=False)
@@ -321,4 +335,7 @@ def delphi_auc(cfg: Config, checkpoint: str | Path, gap_days: float, out_csv: st
     log(f"[delphi] gap {gap_days:g} days, query at {query}: " + ", ".join(
         f"{sx} {v['mean_auc']:.3f} over {v['diseases']} diseases" for sx, v in summary["by_sex"].items())
         + f" → {out_csv}")
+    if targets_file:
+        log(f"[delphi]   targets in {targets_file}: " + ", ".join(
+            f"{sx} {v['mean_auc']:.3f} over {v['diseases']} diseases" for sx, v in summary["targets"]["by_sex"].items()))
     return by_band

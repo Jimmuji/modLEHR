@@ -370,8 +370,13 @@ def test_delphi_points_are_shared_between_models(tiny_config, tmp_path):
     run_prepare(tiny_config.data, log=QUIET)
     best = train(tiny_config, log=QUIET)
     points = tmp_path / "points"
-    first = delphi_auc(tiny_config, best, 0.1, tmp_path / "a.csv", log=QUIET, points_dir=points)
+    listed = tmp_path / "targets.txt"
+    listed.write_text("# two of them\nMEDS_DEATH\nNOT_A_TARGET\n")
+    first = delphi_auc(tiny_config, best, 0.1, tmp_path / "a.csv", log=QUIET, points_dir=points, targets_file=listed)
     assert (points / "points_gap0.1d.parquet").exists() and len(first)
+    only = json.loads((tmp_path / "a.json").read_text())["targets"]
+    assert only["listed"] == 2 and only["in_vocabulary"] == 1
+    assert all(v["diseases"] <= 1 for v in only["by_sex"].values())
     again = delphi_auc(tiny_config, best, 0.1, tmp_path / "b.csv", seed=5, log=QUIET, points_dir=points)
     pd.testing.assert_frame_equal(first, again)  # read back, not drawn again with the other seed
     with pytest.raises(ValueError, match="no event"):
