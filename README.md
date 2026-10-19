@@ -9,12 +9,12 @@ name in a config file. That makes it cheap to ask whether an idea from recent la
 helps on health records: change one name, train, and compare against the baseline on the same
 data with the same evaluation.
 
-Delphi-2M (Shmatko et al., *Nature* 2025) showed that a GPT trained on disease histories can
-predict the rates of over 1,000 diseases. It was trained on UK Biobank, which only approved
-projects can use. modLEHR builds the same kind of model from data anyone can get: open data
-(Synthea, the MIMIC-IV demo, the toy dataset in this repository) and freely available
-credentialed data (MIMIC-IV), all through MEDS, and scores it with Delphi-2M's own evaluation
-(`modlehr delphi`) as well as its own.
+It runs on data anyone can get: open data (Synthea, the MIMIC-IV demo, the toy dataset in this
+repository) and freely available credentialed data (MIMIC-IV). Disease codes are the outcomes;
+labs, vital signs and notes are inputs. Published models are reference points, not the template:
+for Delphi-2M (Shmatko et al., *Nature* 2025), `modlehr delphi` scores any model with its AUC and
+`modlehr export-delphi` lets its own code train on the same prepared data
+([docs/delphi.md](docs/delphi.md)).
 
 The baseline is a plain GPT over events: each event is a code plus the patient's age at that
 event, and an output head gives every outcome a rate per year.

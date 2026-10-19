@@ -96,8 +96,8 @@ Fixes from a second review
 - README, docs/design.md, docs/extending.md and docs/configuration.md describe the code as it is:
   tied labels and follow-up, the marginal risk, calibration, both comparison intervals, the head
   interface and `modlehr delphi`. `scipy`, imported directly, is a declared dependency
-- The README states the aim: Delphi-2M's kind of model, which was trained on UK Biobank, built from
-  data anyone can get (open data, and freely available credentialed data such as MIMIC-IV)
+- The README states the data it runs on (open data, and freely available credentialed data such as
+  MIMIC-IV) and that Delphi-2M is a reference point for comparison, not the template
 
 Results
 - MIMIC-IV diagnoses, ten architectures over three seeds on the Alliance cluster Fir: every

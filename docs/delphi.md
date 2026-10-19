@@ -3,9 +3,9 @@
 Delphi-2M (Shmatko et al., *Nature* 2025; code at
 [github.com/gerstung-lab/Delphi](https://github.com/gerstung-lab/Delphi)) is a GPT trained on the
 disease histories of 400,000 UK Biobank participants that predicts the rate of over 1,000 diseases
-and death. UK Biobank is open only to approved projects. modLEHR builds the same kind of model from
-data anyone can get, through MEDS, and can run Delphi-2M's own code on the same data, so the two
-can be compared on identical subjects, events and splits.
+and death. It is a reference point for modLEHR, not its template: modLEHR scores any model with
+Delphi-2M's AUC, and can run Delphi-2M's own code on a prepared dataset, so the two can be compared
+on identical subjects, events and splits.
 
 ## What is the same
 
