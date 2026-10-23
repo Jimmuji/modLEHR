@@ -70,6 +70,14 @@ def landmark_task(split: PreparedSplit, vocab: Vocabulary, landmark: float, hori
     return LandmarkTask(landmark, horizon, subjects, first[subjects], end[subjects], controls)
 
 
+def restrict(task: LandmarkTask, subjects: np.ndarray | None) -> LandmarkTask:
+    """The task among the given subject indices only (all of them when None)."""
+    if subjects is None:
+        return task
+    keep = np.isin(task.subjects, subjects)
+    return LandmarkTask(task.landmark, task.horizon, task.subjects[keep], task.first[keep], task.end[keep], task.controls)
+
+
 def split_first_ages(split: PreparedSplit, vocab: Vocabulary) -> np.ndarray:
     """first_target_ages of a split, counting only targets within each subject's follow-up."""
     return first_target_ages(split.arrays["tokens"], split.arrays["ages"], split.offsets, vocab, split.follow_up_end)

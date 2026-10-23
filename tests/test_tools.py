@@ -182,6 +182,53 @@ def test_resume_continues_exactly(tiny_config, tmp_path):
     assert final_a["tune_loss"] == pytest.approx(final_b["tune_loss"], abs=1e-6)
 
 
+def test_early_stopping(tiny_config, tmp_path):
+    """train.patience ends a run after that many checks without a new best: the stopped run is the start of
+    the full run, check for check, and resuming it trains no further."""
+    run_prepare(tiny_config.data, log=QUIET)
+    tiny_config.train.steps, tiny_config.train.eval_every = 200, 2
+    straight = copy.deepcopy(tiny_config)
+    straight.train.out_dir = str(tmp_path / "straight")
+    train(straight, log=QUIET)
+    stopped = copy.deepcopy(tiny_config)
+    stopped.train.out_dir, stopped.train.patience = str(tmp_path / "stopped"), 1
+    train(stopped, log=QUIET)
+
+    read = lambda d: [json.loads(x) for x in (Path(d) / "log.jsonl").read_text().splitlines()]  # noqa: E731
+    a, b = read(straight.train.out_dir), read(stopped.train.out_dir)
+    assert len(b) < len(a)
+    for x, y in zip(a, b):
+        assert x["step"] == y["step"] and x["tune_loss"] == pytest.approx(y["tune_loss"], abs=1e-6)
+    assert b[-1]["tune_loss"] >= min(r["tune_loss"] for r in b[:-1])  # stopped on a check without a new best
+    state = torch.load(Path(stopped.train.out_dir) / "last.pt", weights_only=False)
+    assert state["stopped_early"] and state["checks_since_best"] == 1
+    train(stopped, log=QUIET, resume=True)
+    assert len(read(stopped.train.out_dir)) == len(b)
+
+
+def test_data_fraction_trains_and_fits_on_one_nested_subset(tiny_config):
+    """train.data_fraction: the same subjects for every seed, smaller shares inside larger ones, used by
+    training and by the baselines."""
+    from modlehr.prepare.dataset import random_windows, subject_subset
+    assert subject_subset(100, 1.0) is None
+    small, large = subject_subset(100, 0.1), subject_subset(100, 0.5)
+    assert len(small) == 10 and len(large) == 50 and set(small) <= set(large)
+    np.testing.assert_array_equal(small, subject_subset(100, 0.1))
+
+    run_prepare(tiny_config.data, log=QUIET)
+    split = open_split(tiny_config.data.prepared_dir, "train")
+    one = np.array([3])
+    batch = random_windows(split, 4, 64, np.random.default_rng(1), subjects=one)
+    n = int(split.lengths()[3])
+    assert all(torch.equal(batch["tokens"][j, :n], torch.tensor(np.array(split.subject(3)["tokens"]), dtype=torch.long))
+               for j in range(4))
+
+    tiny_config.train.data_fraction, tiny_config.train.steps = 0.5, 5
+    assert train(tiny_config, log=QUIET).exists()
+    out = run_baselines(tiny_config, models=("logistic",), log=QUIET)["logistic"]
+    assert json.loads((out / "evaluate.json").read_text())["data_fraction"] == 0.5
+
+
 def test_grad_accum_runs(tiny_config):
     run_prepare(tiny_config.data, log=QUIET)
     tiny_config.train.grad_accum = 2
@@ -450,3 +497,41 @@ def test_scripts_parse():
     for path in scripts:
         result = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
         assert result.returncode == 0, f"{path.name}: {result.stderr}"
+
+
+def test_settings_study_pairs_runs_by_seed(tmp_path):
+    """scripts/analysis/settings_study.py: a model part is compared with the plain GPT seed by seed over the
+    shared pairs, a task change over its own pairs, and each against logistic regression on its task."""
+    import importlib.util
+    path = Path(__file__).resolve().parents[1] / "scripts" / "analysis" / "settings_study.py"
+    spec = importlib.util.spec_from_file_location("settings_study", path)
+    study = importlib.util.module_from_spec(spec)
+    import sys
+    sys.modules["settings_study"] = study  # its dataclass looks itself up there
+    spec.loader.exec_module(study)
+
+    def write(run, aucs, calibration=None):
+        d = tmp_path / "runs" / run
+        d.mkdir(parents=True)
+        rows = [{"target": t, "landmark": 50, "cases": 30, "controls": 300, "auc": a} for t, a in aucs.items()]
+        pd.DataFrame(rows).to_csv(d / "evaluate.csv", index=False)
+        summary = {"calibration": {"expected_over_observed": calibration}} if calibration else {"baseline": "logistic"}
+        (d / "evaluate.json").write_text(json.dumps(summary))
+
+    for s, shift in [(1, 0.0), (2, 0.01)]:
+        write(f"mimic_iv_core_gpt_s{s}", {"ICD10//A00": 0.70 + shift, "ICD10//R00": 0.60 + shift}, 1.5)
+        write(f"mimic_iv_core_gpt_gqa_s{s}", {"ICD10//A00": 0.71 + shift, "ICD10//R00": 0.61 + shift, "X": 0.9}, 1.4)
+        write(f"mimic_iv_core_gpt_first_contact_s{s}", {"ICD10//A00": 0.75 + shift}, 1.1)
+    write("mimic_iv_core_gpt_logistic", {"ICD10//A00": 0.66, "ICD10//R00": 0.58})
+    write("mimic_iv_core_gpt_first_contact_logistic", {"ICD10//A00": 0.70})
+    targets = tmp_path / "targets.txt"
+    targets.write_text("# A-Q\nICD10//A00\n")
+
+    table = study.study(tmp_path / "runs", None, targets).set_index("setting")
+    assert table.loc["Grouped-query attention", "change"] == pytest.approx(0.01)  # "X" is not a shared pair
+    assert table.loc["Grouped-query attention", "e_over_o"] == pytest.approx(1.4)
+    assert table.loc["Follow-up from the first visit", "change"] == pytest.approx(0.75 - 0.65)  # own pairs
+    assert table.loc["Follow-up from the first visit", "over_lr"] == pytest.approx(0.75 + 0.005 - 0.70)
+    subset = table.loc["Delphi-2M's diseases only (A-Q, death)"]
+    assert subset["change"] == pytest.approx(0.70 - 0.65) and np.isnan(subset["e_over_o"])
+    assert subset["over_lr"] == pytest.approx(0.705 - 0.66)

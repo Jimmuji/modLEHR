@@ -43,8 +43,8 @@ from scipy import sparse
 from sklearn.metrics import roc_auc_score
 
 from modlehr.config import Config
-from modlehr.evaluate.task import LandmarkTask, history_before, landmark_task, split_first_ages, summarize
-from modlehr.prepare.dataset import PreparedSplit, open_split
+from modlehr.evaluate.task import LandmarkTask, history_before, landmark_task, restrict, split_first_ages, summarize
+from modlehr.prepare.dataset import PreparedSplit, open_split, subject_subset
 from modlehr.prepare.vocabulary import Vocabulary
 from modlehr.track import Tracker
 
@@ -99,13 +99,17 @@ def run_baselines(cfg: Config, models: tuple[str, ...] = MODELS, max_dense_featu
     eval_split = open_split(prepared, cfg.evaluate.split)
     first_train, first_eval = split_first_ages(train_split, vocab), split_first_ages(eval_split, vocab)
     H, min_cases, n_tokens = cfg.evaluate.horizon_years, cfg.evaluate.min_cases, len(vocab.tokens)
+    subjects = subject_subset(len(train_split), cfg.train.data_fraction)  # train.data_fraction, as in training
+    if subjects is not None:
+        log(f"[baseline] fitting on {len(subjects):,} of {len(train_split):,} training subjects "
+            f"(data_fraction {cfg.train.data_fraction:g})")
     log(f"[baseline] {', '.join(models)} on {n_tokens:,} token features"
         f"{' plus their latest values' if with_values else ''}, {len(vocab.targets):,} targets")
 
     rows: dict[str, list[dict]] = {m: [] for m in models}
     t0 = time.time()
     for L in cfg.evaluate.landmarks:
-        tr = landmark_task(train_split, vocab, L, H, first_train, cfg.evaluate.controls)
+        tr = restrict(landmark_task(train_split, vocab, L, H, first_train, cfg.evaluate.controls), subjects)
         ev = landmark_task(eval_split, vocab, L, H, first_eval, cfg.evaluate.controls)
         X_tr = landmark_features(train_split, tr, n_tokens, with_values)
         X_ev = landmark_features(eval_split, ev, n_tokens, with_values)
@@ -140,7 +144,7 @@ def run_baselines(cfg: Config, models: tuple[str, ...] = MODELS, max_dense_featu
         result.to_csv(out_dir / "evaluate.csv", index=False)
         summary = {**summarize(result), "horizon_years": H, "controls": cfg.evaluate.controls,
                    "landmarks": cfg.evaluate.landmarks, "split": cfg.evaluate.split, "baseline": name,
-                   "values": with_values}
+                   "values": with_values, "data_fraction": cfg.train.data_fraction}
         (out_dir / "evaluate.json").write_text(json.dumps(summary, indent=1))
         tracker = Tracker(cfg, out_dir, "baseline")
         tracker.summary({k: v for k, v in summary.items() if k != "split"},

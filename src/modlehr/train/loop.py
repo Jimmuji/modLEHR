@@ -24,7 +24,7 @@ import yaml
 
 from modlehr.config import Config
 from modlehr.model.model import ModLEHR
-from modlehr.prepare.dataset import fixed_windows, open_split, random_windows
+from modlehr.prepare.dataset import fixed_windows, open_split, random_windows, subject_subset
 from modlehr.prepare.vocabulary import NO_EVENT, Vocabulary
 from modlehr.track import Tracker
 
@@ -110,6 +110,10 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
     tracker = Tracker(cfg, out_dir, "train")
     train_split = open_split(prepared, meds.train_split)
     tune_split = open_split(prepared, meds.tuning_split)
+    subjects = subject_subset(len(train_split), cfg.train.data_fraction)
+    if subjects is not None:
+        log(f"[train] training on {len(subjects):,} of {len(train_split):,} training subjects "
+            f"(data_fraction {cfg.train.data_fraction:g})")
     if (NO_EVENT in vocab.token_index) != (cfg.data.no_event_years is not None):
         raise ValueError(f"data.no_event_years is {cfg.data.no_event_years} but {prepared} was prepared "
                          f"{'with' if NO_EVENT in vocab.token_index else 'without'} it; run `modlehr prepare` again")
@@ -120,7 +124,7 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
     if cfg.train.compile:
         model.compile()  # in place; parameter names in checkpoints stay the same
 
-    best, first_step = float("inf"), 0
+    best, first_step, since_best = float("inf"), 0, 0
     if resume:
         if not (out_dir / "last.pt").exists():
             raise FileNotFoundError(f"{out_dir / 'last.pt'} not found; nothing to resume")
@@ -133,7 +137,11 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
             torch.cuda.set_rng_state(state["cuda_rng"].cpu())
         if device.type == "mps" and state.get("mps_rng") is not None:  # dropout on an Apple GPU
             torch.mps.set_rng_state(state["mps_rng"].cpu())
-        best, first_step = state["best_tune_loss"], state["step"] + 1
+        best, first_step, since_best = state["best_tune_loss"], state["step"] + 1, state.get("checks_since_best", 0)
+        if state.get("stopped_early"):
+            log(f"[train] this run stopped early after step {state['step']} (train.patience); nothing to resume")
+            tracker.finish()
+            return out_dir / "best.pt"
         log(f"[train] resuming after step {state['step']} (best tuning loss so far {best:.4f})")
 
     t0 = time.time()
@@ -144,8 +152,8 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
                 group["lr"] = lr_at(step, cfg.train)
             opt.zero_grad(set_to_none=True)
             for _ in range(cfg.train.grad_accum):
-                batch = to_device(random_windows(train_split, cfg.train.batch_size, cfg.model.max_len, rng, no_event),
-                                  device)
+                batch = to_device(random_windows(train_split, cfg.train.batch_size, cfg.model.max_len, rng, no_event,
+                                                 subjects), device)
                 with autocast(device, cfg.train.precision):
                     loss, parts = model.loss(batch)
                 (loss / cfg.train.grad_accum).backward()
@@ -172,13 +180,21 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
                 last_check = (step + 1, now)
                 weights = {"model": model.state_dict(), "model_config": cfg.model.__dict__, "step": step, "tune_loss": tune}
                 if tune < best:
-                    best = tune
+                    best, since_best = tune, 0
                     torch.save(weights, out_dir / "best.pt")
+                else:
+                    since_best += 1
+                patient = cfg.train.patience is not None and since_best >= cfg.train.patience and not last
                 torch.save({**weights, "optimizer": opt.state_dict(), "best_tune_loss": best,
+                            "checks_since_best": since_best, "stopped_early": patient,
                             "numpy_rng": rng.bit_generator.state, "torch_rng": torch.get_rng_state(),
                             "cuda_rng": torch.cuda.get_rng_state() if device.type == "cuda" else None,
                             "mps_rng": torch.mps.get_rng_state() if device.type == "mps" else None},
                            out_dir / "last.pt")
+                if patient:
+                    log(f"[train] no new best tuning loss in {since_best} checks: stopping after step {step} "
+                        f"of {cfg.train.steps} (train.patience)")
+                    break
             if stopping and not last:
                 log(f"[train] stopped after step {step}; continue with --resume")
                 tracker.finish()

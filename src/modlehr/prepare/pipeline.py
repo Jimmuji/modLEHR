@@ -65,7 +65,7 @@ def tokenize(events: pd.DataFrame, cfg: DataConfig) -> pd.DataFrame:
     out.loc[out["role"] == "static", "age"] = 0.0
     # from every event the rules matched, before any is dropped below or as a rare token: a thinned
     # measurement or a repeated diagnosis still shows the subject was followed then
-    out["follow_up_start"], out["follow_up_end"] = follow_up_window(out, cfg.follow_up_from)
+    out["follow_up_start"], out["follow_up_end"] = follow_up_window(out, cfg.follow_up_from, cfg.washout_years)
     out = out.loc[out["token"].notna()]  # a grouping can leave a code out of the targets
     out = out.sort_values(["subject_id", "age"], kind="stable")
 
@@ -84,11 +84,12 @@ def tokenize(events: pd.DataFrame, cfg: DataConfig) -> pd.DataFrame:
     return out
 
 
-def follow_up_window(frame: pd.DataFrame, start_from: str = "first_event") -> tuple[pd.Series, pd.Series]:
+def follow_up_window(frame: pd.DataFrame, start_from: str = "first_event",
+                     washout_years: float = 0.0) -> tuple[pd.Series, pd.Series]:
     """Per event, its subject's start and end of follow-up. The end is the last event of a rule with
     follow_up: true (the last event at all when there is none), and no later than death. The start is
     the first event (start_from first_event) or the first event of a follow_up rule that is not static
-    (first_contact; never, inf, for a subject without one)."""
+    (first_contact; never, inf, for a subject without one), plus washout_years."""
     subject, age = frame["subject_id"], frame["age"]
     end = age.where(frame["follow_up"]).groupby(subject).transform("max")
     end = end.fillna(age.groupby(subject).transform("max"))
@@ -98,7 +99,7 @@ def follow_up_window(frame: pd.DataFrame, start_from: str = "first_event") -> tu
         start = age.where(contact).groupby(subject).transform("min").fillna(np.inf).astype(age.dtype)
     else:
         start = age.groupby(subject).transform("min")
-    return start, np.fmin(end, death)
+    return start + washout_years, np.fmin(end, death)
 
 
 def format_rules(rules: list[dict]) -> list[str]:
@@ -255,8 +256,15 @@ def is_current(cfg: DataConfig) -> bool:
     if not all(p.exists() for p in needed):
         return False
     stored = json.loads((out_dir / "prepare.json").read_text())
-    return (stored.get("data_config") == json.loads(json.dumps(asdict(cfg)))
+    return (stored.get("data_config") == comparable_config(cfg, stored.get("data_config") or {})
             and stored.get("meds_fingerprint") == meds_fingerprint(cfg.meds_dir))
+
+
+def comparable_config(cfg: DataConfig, stored: dict) -> dict:
+    """The data config as prepare.json stores it, less the options added after `stored` was written that are
+    at their defaults: data prepared before an option existed is what the option's default gives."""
+    current, defaults = json.loads(json.dumps(asdict(cfg))), json.loads(json.dumps(asdict(DataConfig())))
+    return {k: v for k, v in current.items() if k in stored or v != defaults.get(k)}
 
 
 def describe(cfg: DataConfig, top: int = 10) -> list[str]:

@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+What moves the results
+- `train.patience` stops a run after that many tuning checks without a new best; the stopped run is the
+  start of the full run (same schedule), and `--resume` on it trains no further. On the October 19 MIMIC-IV
+  runs, 5 checks would have stopped them at 13,000 to 19,000 of 20,000 steps with the same best.pt;
+  configs/experiment/mimic_iv_core_gpt.yaml now sets it
+- `train.data_fraction` trains (and `modlehr baseline` fits) on a fixed share of the training subjects,
+  nested across shares and the same for every seed, for a learning curve (mimic_iv_core_gpt_frac10/25/50)
+- `data.washout_years` starts follow-up later, so a first stay's diagnoses are history, not new cases
+  (configs/data/mimic_iv_core_washout.yaml: one year after the first contact)
+- Data prepared before an option existed stays current when the option is at its default
+- scripts/fir/study.sh: model parts, training data and task settings over seeds, with logistic regression
+  on each task, evaluation settings (horizon 1 and 5 years, next-target score, never-controls;
+  variants.sbatch, not sent to wandb) and gradient boosting (gbm.sbatch)
+- scripts/analysis/settings_study.py: the table and figure of that study; scripts/analysis/by_chapter.py:
+  a model's lead over a baseline by ICD-10 chapter, landmark age and number of cases
+
 Delphi-2M's AUC on shared points
 - `modlehr delphi --points-dir` draws the prediction points once (diseases, cases, controls, times) and
   scores every later model on them, refusing data that differ (a fingerprint of subjects, ages,

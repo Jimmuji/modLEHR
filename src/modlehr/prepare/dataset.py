@@ -251,13 +251,25 @@ def with_no_events(row: dict, token: int, years: float, rng: np.random.Generator
     return {k: v[-max_len:] for k, v in out.items()}
 
 
+def subject_subset(n: int, fraction: float) -> np.ndarray | None:
+    """Indices of the first `fraction` of n subjects in one fixed random order (seed 0), sorted; None for all.
+    Smaller fractions give subsets of larger ones (train.data_fraction)."""
+    if fraction >= 1:
+        return None
+    keep = np.random.default_rng(0).permutation(n)[:max(1, int(np.ceil(fraction * n)))]
+    return np.sort(keep)
+
+
 def random_windows(split: PreparedSplit, batch_size: int, max_len: int, rng: np.random.Generator,
-                   no_event: tuple[int, float] | None = None) -> dict[str, torch.Tensor]:
+                   no_event: tuple[int, float] | None = None,
+                   subjects: np.ndarray | None = None) -> dict[str, torch.Tensor]:
     """A training batch: random subjects, each cropped to a random window of at most max_len events.
-    no_event = (token, years) adds Delphi-2M's "no event" tokens (with_no_events)."""
+    no_event = (token, years) adds Delphi-2M's "no event" tokens (with_no_events). subjects: draw only
+    from these subject indices (subject_subset), from all when None."""
     lengths = split.lengths()
     rows = []
-    for i in rng.integers(0, len(split), batch_size):
+    draws = rng.integers(0, len(split) if subjects is None else len(subjects), batch_size)
+    for i in (draws if subjects is None else subjects[draws]):
         n = lengths[i]
         start = int(rng.integers(0, n - max_len + 1)) if n > max_len else 0
         row = split.subject(int(i), start, start + min(n, max_len))

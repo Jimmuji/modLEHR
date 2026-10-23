@@ -74,6 +74,11 @@ class DataConfig:
     # rates at times with no event; evaluation and sampling then ask at a "no event" token placed at
     # the landmark or start age. Off (null) by default.
     no_event_years: float | None = None
+    # A washout: follow-up starts this many years after it otherwise would. Events in that stretch stay
+    # inputs but carry no loss, and a target first recorded there counts as already had at a landmark,
+    # not as a new case: in a record that begins at a first admission, the diagnoses of the first stays
+    # are often diseases the patient already had (prevalent at entry), not new ones. 0 for none.
+    washout_years: float = 0.0
 
 
 @dataclass
@@ -113,6 +118,15 @@ class TrainConfig:
     compile: bool = False  # torch.compile the model (CUDA; first steps are slower)
     wandb_project: str | None = None  # Weights & Biases project; tracking is off when unset
     wandb_entity: str | None = None  # wandb team or user (default: the logged-in user's)
+    # Early stopping: end the run after this many tuning checks in a row without a new lowest tuning loss
+    # (null: run every step). The learning-rate schedule still follows train.steps, so a stopped run is the
+    # first part of the full run, and best.pt is the same unless a lower tuning loss would have come later.
+    patience: int | None = None
+    # Train on this share of the training subjects, for a learning curve: the first share of one fixed
+    # random order (seed 0, whatever train.seed is), so smaller shares are subsets of larger ones and every
+    # seed sees the same subjects. The vocabulary, starting rates and evaluation stay those of the full data.
+    # `modlehr baseline` fits on the same subjects.
+    data_fraction: float = 1.0
 
 
 @dataclass
@@ -203,6 +217,12 @@ def check(cfg: Config) -> Config:
         raise ValueError(f"evaluate.landmarks must be a list of ages, e.g. [40, 50, 60], not {landmarks!r}")
     if cfg.data.no_event_years is not None and not cfg.data.no_event_years > 0:
         raise ValueError(f"data.no_event_years must be positive, or null for none, not {cfg.data.no_event_years!r}")
+    if not cfg.data.washout_years >= 0:
+        raise ValueError(f"data.washout_years must be 0 or more, not {cfg.data.washout_years!r}")
+    if cfg.train.patience is not None and not (isinstance(cfg.train.patience, int) and cfg.train.patience >= 1):
+        raise ValueError(f"train.patience must be a whole number of tuning checks (1 or more), or null, not {cfg.train.patience!r}")
+    if not 0 < cfg.train.data_fraction <= 1:
+        raise ValueError(f"train.data_fraction must be in (0, 1], not {cfg.train.data_fraction!r}")
     if not cfg.evaluate.horizon_years > 0:
         raise ValueError(f"evaluate.horizon_years must be positive, not {cfg.evaluate.horizon_years!r}")
     return cfg

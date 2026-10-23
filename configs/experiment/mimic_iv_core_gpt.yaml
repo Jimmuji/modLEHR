@@ -12,6 +12,9 @@ train:
   steps: 20000
   warmup: 1000
   eval_every: 1000
+  # Stop after five checks (5,000 steps) without a new lowest tuning loss. On the October 19 runs (12 runs,
+  # 20,000 steps each) this would have ended them at 13,000 to 19,000 steps with the same best.pt.
+  patience: 5
 evaluate:
   # MIMIC-IV is adults seen in hospital, and a record ends at the last hospital contact
   # (death is linked up to one year after discharge), so landmarks start at 40 and the

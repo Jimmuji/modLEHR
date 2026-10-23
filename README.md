@@ -249,7 +249,8 @@ event. It does five things, all set in the data config (full reference in
    and no later than death. Events after follow-up stay inputs but carry no loss. Follow-up starts
    at the first event; with `follow_up_from: first_contact` it starts at the first event of a
    follow-up rule that is not static, for records that begin at a first hospital contact, and
-   events before it carry no loss either. Only the last
+   events before it carry no loss either; `washout_years` moves the start later still, so the
+   diagnoses of a first stay are history rather than new cases. Only the last
    event at each distinct time carries a loss, so the model predicts after seeing everything
    recorded at that moment.
 
@@ -284,6 +285,10 @@ For long runs: `last.pt` is rewritten at every check with the optimizer and rand
 so `modlehr train --resume` continues a stopped run exactly where it was, and `--stop-after STEP`
 ends a run early on purpose (a job's time limit). On a GPU, `train.precision: bf16` runs the forward
 pass in bfloat16 and `train.grad_accum: k` adds up the gradients of k batches per step.
+`train.patience: n` stops a run after n checks without a new lowest tuning loss; the schedule still
+follows `train.steps`, so the stopped run is the start of the full one. `train.data_fraction: 0.25`
+trains on a fixed quarter of the training subjects (the same for every seed, inside the half), for
+a learning curve.
 
 ### evaluate
 
@@ -427,6 +432,17 @@ classical baselines, and prints the comparison. Each run takes about 7 minutes o
 33 runs (11 variants, 3 seeds) take about four hours; `SEEDS="1" scripts/compare_synthea.sh` runs one
 seed.
 
+### What moves the results
+
+`scripts/fir/study.sh` submits, on Fir, a study of how far each choice moves the numbers: the nine
+model parts, "no event" tokens, a share of the training subjects (10%, 25%, 50%), and the choices that
+define the task (where follow-up starts, a washout, the target codes, the horizon, the controls), each
+over seeds and against logistic regression on its own task, plus gradient boosting.
+`scripts/analysis/settings_study.py runs` then writes the table and figure: for each choice, the change
+in the reported mean AUC, the model's lead over logistic regression on the same task, and calibration.
+`scripts/analysis/by_chapter.py` splits a model's lead over a baseline by ICD-10 chapter, landmark age
+and number of cases.
+
 ### Delphi-2M's own code on the same data
 
 ```bash
@@ -560,10 +576,15 @@ How to read it:
 - **Parts from recent language models do not move AUC here.** No difference reaches 0.001, and every
   interval includes zero. With 1,018 targets and 3.6M training events, the architecture is not
   what limits this task.
-- **Calibration is off by about twice** (expected over observed new diagnoses 1.84 to 1.95 over the
-  seeds; 4.2 at age 40, 1.4 at 80). The head holds each hazard constant from the last event before
-  the landmark, often a discharge years earlier, when the risk of coming back is highest. Delphi-2M
-  adds a no-event token every five years for this; here it is not done yet.
+- **Calibration is off** (expected over observed new diagnoses 1.84 to 1.95 over these seeds; 1.59 on
+  the October 19 reruns after the second review, 3.7 at age 40 and 1.0 at 80). The head holds each
+  hazard constant from the last event before the landmark, often a discharge years earlier, when the
+  risk of coming back is highest. Delphi-2M's "no event" tokens alone make it worse (2.9), since with
+  follow-up from birth they fill the years before the first admission; with follow-up from the first
+  visit they bring it to 1.16 (`mimic_iv_core_gpt_no_event_first_contact.yaml`, three seeds).
+- **The lead over logistic regression is in every ICD-10 chapter** (+0.005 to +0.037) and grows with
+  age, from +0.003 at landmark 40 to +0.036 at 70: longer histories are where the sequence model
+  helps (`scripts/analysis/by_chapter.py`, October 19 runs).
 - **These numbers replace an earlier set.** An external review found that only the first of several
   targets recorded at the same time was a training label (85% of first diagnoses never were), that
   outpatient BMI extended follow-up, that calibration dropped censored patients and that the
@@ -738,7 +759,9 @@ src/modlehr/
   registry.py      name → part, for everything that can be swapped
   config.py        experiment configuration and command-line overrides
   cli.py           the commands
-scripts/           compare_synthea.sh: every Synthea variant over three seeds; run_mimic_iv.sh: full MIMIC-IV;
+scripts/           fir/: jobs for the Alliance cluster Fir (study.sh: the settings study; rerun_all.sh);
+                   analysis/: tables and figures from evaluated runs (settings_study.py, by_chapter.py);
+                   compare_synthea.sh: every Synthea variant over three seeds; run_mimic_iv.sh: full MIMIC-IV;
                    run_mimic_iv_core.sh: MIMIC-IV diagnoses only; compare_mimic_iv_core.sh: every variant
                    on it over three seeds; fetch_mimic_iv.sh: resume the raw download;
                    fetch_code_maps.sh: the public GEMs and phecode maps; compare_delphi_code.sh: Delphi-2M's

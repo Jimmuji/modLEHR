@@ -340,6 +340,48 @@ def test_follow_up_from_the_first_contact(tmp_path, start_from, start, loss_befo
     assert len(landmark_task(split, vocab, 52.0, 2.0).subjects) == 30
 
 
+def test_washout_moves_the_start_of_follow_up(tmp_path):
+    """With data.washout_years, follow-up starts that many years after the first contact: a diagnosis of the
+    first stay carries no loss and, at a later landmark, counts as already had rather than as a new case."""
+    from conftest import write_meds
+    from modlehr.config import DataConfig, EventRule
+    from modlehr.evaluate.task import landmark_task, split_first_ages
+
+    rows = []
+    for s in range(30):
+        rows += [(s, None, "GENDER//F", None), (s, 50.0, "ADM", None), (s, 50.5, "DX//A", None),
+                 (s, 58.0, "ADM", None), (s, 58.5, "DX//B", None)]
+    cfg = DataConfig(meds_dir=str(write_meds(tmp_path / "meds", rows)), prepared_dir=str(tmp_path / "prepared"),
+                     min_subjects_per_token=5, value_mode="none", follow_up_from="first_contact", washout_years=1.0,
+                     events=[EventRule(name="sex", role="static", prefix="GENDER//"),
+                             EventRule(name="dx", role="target", prefix="DX//"),
+                             EventRule(name="adm", role="context", codes=["ADM"])])
+    run_prepare(cfg, log=lambda *_: None)
+    split = open_split(cfg.prepared_dir, "train")
+    vocab = Vocabulary.load(Path(cfg.prepared_dir) / "vocab.json")
+    np.testing.assert_allclose(split.follow_up_start, 51.0, atol=1e-4)
+    row = split.subject(0)
+    assert not row["loss_mask"][:3].any() and row["loss_mask"][3]  # sex, ADM, DX//A; then the second ADM
+    assert len(landmark_task(split, vocab, 50.8, 2.0).subjects) == 0  # still in the washout
+    task = landmark_task(split, vocab, 52.0, 10.0, split_first_ages(split, vocab))
+    keep, case = task.labels(vocab.targets.index("DX//A"))
+    assert len(task.subjects) == 30 and not keep.any()  # had A before the landmark
+    keep, case = task.labels(vocab.targets.index("DX//B"))
+    assert keep.all() and case.all()
+
+
+def test_data_prepared_before_an_option_existed_is_still_current(tiny_config):
+    """prepare.json written before data.washout_years existed matches a config that leaves it at 0."""
+    from modlehr.prepare.pipeline import is_current
+    run_prepare(tiny_config.data, log=lambda *_: None)
+    meta_path = Path(tiny_config.data.prepared_dir) / "prepare.json"
+    meta = json.loads(meta_path.read_text())
+    del meta["data_config"]["washout_years"]
+    meta_path.write_text(json.dumps(meta))
+    assert is_current(tiny_config.data)
+    assert not is_current(replace(tiny_config.data, washout_years=1.0))
+
+
 def test_no_event_tokens_are_labelled_from_their_own_age(tmp_path):
     """A "no event" token at age a gets every target of the next target time after a and the years
     until it (or until the end of follow-up), carries a loss, and leaves the real events as they were."""

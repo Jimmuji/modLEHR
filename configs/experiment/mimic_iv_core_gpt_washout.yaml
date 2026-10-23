@@ -1,0 +1,5 @@
+# The plain GPT on MIMIC-IV diagnoses with follow-up from the first hospital contact and a one-year
+# washout (configs/data/mimic_iv_core_washout.yaml), against mimic_iv_core_gpt_first_contact.yaml.
+defaults: [mimic_iv_core_gpt.yaml, ../data/mimic_iv_core_washout.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_washout

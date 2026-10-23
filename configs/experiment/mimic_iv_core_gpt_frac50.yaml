@@ -1,0 +1,6 @@
+# The plain GPT of mimic_iv_core_gpt.yaml trained on 50% of the training subjects, for the learning
+# curve; evaluated on the same held-out subjects. `modlehr baseline` fits on the same 50%.
+defaults: [mimic_iv_core_gpt.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_frac50
+  data_fraction: 0.5

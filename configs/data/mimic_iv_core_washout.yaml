@@ -1,0 +1,8 @@
+# MIMIC-IV diagnoses with follow-up from the first hospital contact and a one-year washout: the first
+# year after it is history only. A disease first coded in that year is often one the patient already had
+# when first admitted (prevalent at entry), so it is not learned or scored as a new one. Otherwise the
+# same as mimic_iv_core_first_contact.yaml.
+defaults: [mimic_iv_core_first_contact.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_core_washout
+  washout_years: 1

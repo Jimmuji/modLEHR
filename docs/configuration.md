@@ -70,6 +70,7 @@ way; edit the data config.
 | `text_max_words` | `256` | Text events: words kept from the start of each note |
 | `no_event_years` | none | Delphi-2M's "no event" tokens: training inserts one at a random age every this many years on average (Delphi-2M uses 5), between a window's first and last events and within follow-up, labelled with the next target from that age. The model learns rates at times with no event, and `evaluate`, `generate` and `simulate` then ask at a "no event" token placed at the landmark or start age instead of reading the last event before it. Adds the token `MODLEHR//NO_EVENT` to the vocabulary |
 | `follow_up_from` | `first_event` | Where follow-up starts. `first_event`: at the first event of any rule, so at age 0 when a static fact such as sex is recorded. `first_contact`: at the first event of a `follow_up` rule that is not static, for sources whose records begin at a first contact (MIMIC-IV's first admission). Before it nothing could have been recorded, so earlier events stay inputs but carry no loss, and a landmark task only includes subjects followed by the landmark |
+| `washout_years` | `0` | A washout: follow-up starts this many years after it otherwise would. Events in that stretch stay inputs but carry no loss, and a target first recorded there counts as already had at a landmark rather than as a new case. Meant for records that begin at a first admission, whose first diagnoses are often diseases the patient already had (prevalent at entry); `configs/data/mimic_iv_core_washout.yaml` uses one year after the first contact |
 
 ### Event rules (`data.events`)
 
@@ -174,6 +175,8 @@ the `description_regex` keeps only disorders as targets.
 | `precision` | `fp32` | `bf16` runs the forward pass in bfloat16; CUDA only |
 | `grad_accum` | `1` | Batches whose gradients are added up per optimizer step, for a larger effective batch |
 | `compile` | `false` | `torch.compile` the model; worthwhile on CUDA for long runs |
+| `patience` | none | Early stopping: end the run after this many checks in a row without a new lowest tuning loss. The learning-rate schedule still follows `steps`, so a stopped run is the first part of the full run and `best.pt` is the same unless a lower tuning loss would have come later. `last.pt` records the stop, and `--resume` then trains no further |
+| `data_fraction` | `1.0` | Train on this share of the training subjects, for a learning curve: the first share of one fixed random order (seed 0, whatever `seed` is), so smaller shares are subsets of larger ones and every seed sees the same subjects. The vocabulary, starting rates and evaluation are those of the full data; `modlehr baseline` fits on the same subjects |
 | `wandb_project` | none | Track the run in this Weights & Biases project: every check (losses, learning rate, steps per second, peak GPU memory; wandb adds GPU utilization), then the `evaluate` and `baseline` summaries in the same run. Off when unset. Needs `pip install wandb` and `wandb login` |
 | `wandb_entity` | none | The wandb team or user that owns the project; default is the logged-in user's |
 
