@@ -688,7 +688,9 @@ chartevents among them. `modlehr convert mimic-iv-core` reads the three tables t
 (`hosp/patients.csv.gz`, `hosp/admissions.csv.gz`, `hosp/diagnoses_icd.csv.gz`, 56 MB) and
 writes the same code families, so `configs/data/mimic_iv_core.yaml` is `mimic_iv.yaml` with the
 measurement rules removed. This is the Delphi-2M data shape on MIMIC: sex, disease codes, death,
-and the hospital contacts that time them. Targets are ICD-10 categories, with ICD-9 codes mapped
+and the hospital contacts that time them. A stay's diagnoses are timed at its discharge, as in the
+official ETL; `--diagnosis-time admission` times them at its admission instead
+(`configs/data/mimic_iv_core_admission_time.yaml`). Targets are ICD-10 categories, with ICD-9 codes mapped
 through the CMS GEMs (`icd_gems`, 1,018 targets), which `scripts/fetch_code_maps.sh` downloads; see
 [docs/disease_codes.md](docs/disease_codes.md). `scripts/run_mimic_iv_core.sh` runs it end to end
 and evaluates under both control conventions:

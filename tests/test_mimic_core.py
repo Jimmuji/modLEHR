@@ -79,6 +79,19 @@ def test_core_adapter_writes_valid_meds(tmp_path):
     assert two.loc["DIAGNOSIS//ICD//10//I10", "time"] <= two.loc[meds.death_code, "time"]
 
 
+def test_diagnoses_can_be_timed_at_admission(tmp_path):
+    """diagnosis_time="admission" moves a stay's diagnoses to its admission and nothing else."""
+    raw = write_raw(tmp_path / "raw")
+    convert(raw, tmp_path / "admit", held_out=0.0, tuning=0.0, diagnosis_time="admission")
+    ds = open_meds(tmp_path / "admit", validate=True)
+    one = pd.concat([ds.read_shard(s) for s in ds.shards()]).query("subject_id == 1").set_index("code")
+    assert one.loc["DIAGNOSIS//ICD//9//4280", "time"] == pd.Timestamp("2151-01-01 08:00:00")
+    assert one.loc["DIAGNOSIS//ICD//10//E119", "time"] == pd.Timestamp("2153-06-01 08:00:00")
+    assert one.loc[meds.death_code, "time"] == pd.Timestamp("2155-03-01")
+    with pytest.raises(ValueError, match="diagnosis_time"):
+        convert(raw, tmp_path / "bad", diagnosis_time="midnight")
+
+
 def test_core_adapter_needs_the_three_tables(tmp_path):
     raw = write_raw(tmp_path / "raw")
     (raw / "hosp/diagnoses_icd.csv.gz").unlink()

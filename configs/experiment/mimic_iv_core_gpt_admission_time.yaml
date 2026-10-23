@@ -1,0 +1,5 @@
+# The plain GPT on MIMIC-IV diagnoses timed at admission (configs/data/mimic_iv_core_admission_time.yaml),
+# against mimic_iv_core_gpt.yaml, whose diagnoses are timed at discharge.
+defaults: [mimic_iv_core_gpt.yaml, ../data/mimic_iv_core_admission_time.yaml]
+train:
+  out_dir: runs/mimic_iv_core_gpt_admission_time

@@ -10,8 +10,8 @@ of four kinds:
     model part      a registered part swapped; the landmark tasks are the plain GPT's
     training data   what the model learns from changes, the tasks do not ("no event" tokens, a share of
                     the training subjects)
-    task            who or what is scored changes: where follow-up starts, a washout, the target codes,
-                    the horizon, the controls, the diseases averaged over
+    task            who or what is scored changes: where follow-up starts, a washout, when diagnoses are
+                    timed, the target codes, the horizon, the controls, the diseases averaged over
     readout         the same model and task, a different score read from the model
 
 Columns, each a mean over seeds with a 95% t interval over the seeds both runs have:
@@ -53,6 +53,7 @@ SETTINGS = [
     ("task", "Follow-up from the first visit", "first_contact", "evaluate", "first_contact_logistic", PLAIN),
     ("task", 'First visit + "no event" tokens', "no_event_first_contact", "evaluate", "no_event_first_contact_logistic", PLAIN),
     ("task", "First visit + 1-year washout", "washout", "evaluate", "washout_logistic", PLAIN),
+    ("task", "Diagnoses timed at admission", "admission_time", "evaluate", "admission_time_logistic", PLAIN),
     ("task", "ICD-9 and ICD-10 kept apart", "icd3char", "evaluate", "icd3char_logistic", PLAIN),
     ("task", "Phecodes as targets", "phecode", "evaluate", "phecode_logistic", PLAIN),
     ("task", "Horizon 1 year (not 2)", "", "evaluate_h1", "h1_logistic", PLAIN),

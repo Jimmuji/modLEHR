@@ -20,7 +20,7 @@ alcohol); smoking appears only as diagnosis codes.
     subject_id     MIMIC-IV's own subject_id
     time           event datetime; null for sex
     code           MEDS_BIRTH, MEDS_DEATH, GENDER//F|M,
-                   DIAGNOSIS//ICD//<9|10>//<icd_code>   at hospital discharge
+                   DIAGNOSIS//ICD//<9|10>//<icd_code>   at hospital discharge (or admission, below)
                    HOSPITAL_ADMISSION//<type>//<location>, ED_REGISTRATION
     numeric_value  the omr value when it is a number; otherwise empty
     text_value     the omr value as written
@@ -28,6 +28,12 @@ alcohol); smoking appears only as diagnosis codes.
 Death is timed as in the official ETL: the earliest in-hospital `deathtime` from admissions when
 there is one, else the date-only `dod` from patients. `dod` alone would put an in-hospital death at
 midnight, before the diagnoses of the admission it ended, which are timed at discharge.
+
+MIMIC-IV records a stay's diagnoses without a time of their own; the official ETL, and this adapter,
+time them at the stay's discharge, when they are known for certain. `diagnosis_time="admission"`
+(`modlehr convert mimic-iv-core --diagnosis-time admission`) times them at the admission instead, as if
+each were there when the patient arrived: a model then cannot learn that an admission is followed within
+days by its own diagnoses, which says that the patient is in hospital rather than what will happen later.
 
 Ages come from MIMIC's date shift: a subject's birth is `anchor_year - anchor_age`, taken at the
 start of that year, which is what the official ETL does. Ages are therefore accurate to about a
@@ -71,7 +77,7 @@ def _patient_events(raw: Path, deathtime: pd.Series) -> tuple[pd.DataFrame, pd.S
     return pd.concat(parts, ignore_index=True), p["subject_id"]
 
 
-def _admission_events(raw: Path) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
+def _admission_events(raw: Path) -> tuple[pd.DataFrame, pd.Series, pd.Series, pd.Series]:
     a = pd.read_csv(raw / "hosp/admissions.csv.gz",
                     usecols=["subject_id", "hadm_id", "admittime", "dischtime", "deathtime", "edregtime",
                              "admission_type", "admission_location"])
@@ -82,8 +88,9 @@ def _admission_events(raw: Path) -> tuple[pd.DataFrame, pd.Series, pd.Series]:
     parts.append(pd.DataFrame({"subject_id": ed["subject_id"], "time": _time(ed["edregtime"]),
                                "code": "ED_REGISTRATION"}))
     discharge = a.set_index("hadm_id")["dischtime"].pipe(_time)
+    admission = a.set_index("hadm_id")["admittime"].pipe(_time)
     deathtime = _time(a["deathtime"]).groupby(a["subject_id"]).min().dropna()
-    return pd.concat(parts, ignore_index=True), discharge, deathtime
+    return pd.concat(parts, ignore_index=True), discharge, admission, deathtime
 
 
 def _diagnosis_events(raw: Path, discharge: pd.Series) -> pd.DataFrame:
@@ -125,16 +132,22 @@ def _write(df: pd.DataFrame, path: Path) -> None:
     pq.write_table(table, path)
 
 
+DIAGNOSIS_TIMES = ("discharge", "admission")
+
+
 def convert(raw_dir: str | Path, out_dir: str | Path, held_out: float = 0.2, tuning: float = 0.1,
-            seed: int = 1413) -> dict:
+            seed: int = 1413, diagnosis_time: str = "discharge") -> dict:
+    """diagnosis_time: when a stay's diagnoses are timed, at its discharge (the official ETL) or admission."""
+    if diagnosis_time not in DIAGNOSIS_TIMES:
+        raise ValueError(f"diagnosis_time must be one of {DIAGNOSIS_TIMES}, not {diagnosis_time!r}")
     raw_dir, out_dir = Path(raw_dir), Path(out_dir)
     missing = [t for t in TABLES if not (raw_dir / t).exists()]
     if missing:
         raise FileNotFoundError(f"{raw_dir} is missing {', '.join(missing)}")
 
-    admissions, discharge, deathtime = _admission_events(raw_dir)
+    admissions, discharge, admission, deathtime = _admission_events(raw_dir)
     patients, subject_ids = _patient_events(raw_dir, deathtime)
-    diagnoses = _diagnosis_events(raw_dir, discharge)
+    diagnoses = _diagnosis_events(raw_dir, discharge if diagnosis_time == "discharge" else admission)
     parts = [patients, admissions, diagnoses]
     n_omr = 0
     if (raw_dir / OMR).exists():
@@ -170,7 +183,7 @@ def convert(raw_dir: str | Path, out_dir: str | Path, held_out: float = 0.2, tun
                    out_dir / meds.subject_splits_filepath)
     (out_dir / meds.dataset_metadata_filepath).write_text(json.dumps({
         "dataset_name": "MIMIC-IV 3.1 core (patients, admissions, diagnoses)",
-        "etl_name": "modlehr.data.adapters.mimic_iv_core", "etl_version": __version__,
+        "etl_name": "modlehr.data.adapters.mimic_iv_core", "etl_version": __version__, "diagnosis_time": diagnosis_time,
         "meds_version": meds.__version__, "created_at": dt.datetime.now().isoformat(timespec="seconds"),
     }, indent=2))
     return {"subjects": len(subjects), "events": int(len(events)), "codes": int(len(codes)),

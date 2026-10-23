@@ -1,0 +1,9 @@
+# MIMIC-IV diagnoses timed at the admission of their stay instead of its discharge, written by
+#   modlehr convert mimic-iv-core --raw-dir data/mimiciv/3.1 --out data/mimic_iv_core_meds_admit --diagnosis-time admission
+# Timed at discharge, every admission is followed within days by its own diagnoses, so a model learns
+# that a patient is in hospital rather than what will happen later; here they are history from the start
+# of the stay. Otherwise the same as mimic_iv_core.yaml.
+defaults: [mimic_iv_core.yaml]
+data:
+  meds_dir: data/mimic_iv_core_meds_admit
+  prepared_dir: runs/prepared/mimic_iv_core_admission_time
