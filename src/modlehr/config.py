@@ -139,6 +139,10 @@ class EvaluateConfig:
     split: str = "held_out"
     batch_size: int = 256
     likelihood: bool = True  # also report the held-out negative log-likelihood (event and time parts)
+    # Recalibrate before scoring: at each landmark, scale every rate by the one factor that makes the expected
+    # number of new targets on the tuning split equal the observed one. Ranks within a target, so AUC, do not
+    # change; calibration on the evaluation split then shows what is left once the overall level is right.
+    recalibrate: bool = False
 
 
 @dataclass

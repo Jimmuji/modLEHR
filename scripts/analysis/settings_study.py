@@ -61,6 +61,7 @@ SETTINGS = [
     ("task", "Controls: never diagnosed", "", "evaluate_never", "never_logistic", PLAIN),
     ("task", "Delphi-2M's diseases only (A-Q, death)", "", "evaluate", "logistic", PLAIN),  # filtered below
     ("readout", "Score: next target, not own risk", "", "evaluate_next_event", "logistic", PLAIN),
+    ("readout", "Recalibrated on the tuning split", "", "evaluate_recal", "logistic", PLAIN),
 ]
 SUBSET_LABEL = "Delphi-2M's diseases only (A-Q, death)"
 SEED = re.compile(r"_s(\d+)$")

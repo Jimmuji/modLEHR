@@ -320,6 +320,8 @@ recorded after it. It comes from the model's rates whatever `evaluate.risk` is.
 Patients whose follow-up ends inside the window are not dropped: the fully observed ones are weighted
 by 1 / P(still followed), from a Kaplan-Meier fit of the follow-up end times. Reported as expected
 over observed (1 is calibrated), and per (patient, target) by risk bin in `evaluate_calibration.csv`.
+`evaluate.recalibrate: true` first scales the rates at each landmark by one factor fit on the tuning
+split, which leaves AUCs as they are and shows how much of the error is the overall level.
 
 **Likelihood.** The mean negative log-likelihood per prediction on the held-out patients,
 split into an event part (which target comes next) and a time part (how long until it). AUC

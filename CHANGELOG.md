@@ -15,6 +15,8 @@ What moves the results
 - `modlehr convert mimic-iv-core --diagnosis-time admission` times a stay's diagnoses at its admission
   rather than its discharge, so an admission is not followed by its own diagnoses days later
   (configs/data/mimic_iv_core_admission_time.yaml; the study converts it in its CPU job)
+- `evaluate.recalibrate` scales the rates at each landmark by one factor fit on the tuning split (expected
+  new targets = observed); AUCs stay the same, calibration shows what is left beyond the overall level
 - scripts/fir/study.sh: model parts, training data and task settings over seeds, with logistic regression
   on each task, evaluation settings (horizon 1 and 5 years, next-target score, never-controls;
   variants.sbatch, not sent to wandb) and gradient boosting (gbm.sbatch)

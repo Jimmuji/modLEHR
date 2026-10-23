@@ -206,6 +206,7 @@ step, train and tuning loss, the loss parts, seconds), `best.pt`, `last.pt`, and
 | `split` | `held_out` | Which split to score |
 | `batch_size` | `256` | Timelines per forward pass |
 | `likelihood` | `true` | Also report the negative log-likelihood per prediction on the split |
+| `recalibrate` | `false` | Before scoring, scale every rate at a landmark by the one factor that makes the tuning split's expected number of new targets in the window equal its observed one. AUCs do not change; calibration on the evaluation split then shows what is left once the overall level is right. The factors are in the summary (`recalibration`) |
 
 `modlehr baseline` uses the same `evaluate` section, so its pairs line up with the model's.
 `--models` picks `logistic`, `gbm` or both; `--gbm-features` (default 2,000) caps the columns

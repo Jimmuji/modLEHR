@@ -535,3 +535,23 @@ def test_settings_study_pairs_runs_by_seed(tmp_path):
     subset = table.loc["Delphi-2M's diseases only (A-Q, death)"]
     assert subset["change"] == pytest.approx(0.70 - 0.65) and np.isnan(subset["e_over_o"])
     assert subset["over_lr"] == pytest.approx(0.705 - 0.66)
+
+
+def test_recalibration_fits_the_tuning_split_and_keeps_aucs(tiny_config):
+    """evaluate.recalibrate scales the rates at each landmark so that the tuning split's expected number of new
+    targets is its observed one; the AUCs stay as they were."""
+    run_prepare(tiny_config.data, log=QUIET)
+    best = train(tiny_config, log=QUIET)
+    plain = evaluate(tiny_config, best, Path(tiny_config.train.out_dir) / "plain.csv", log=QUIET)
+    tiny_config.evaluate.recalibrate = True
+    recal = evaluate(tiny_config, best, Path(tiny_config.train.out_dir) / "recal.csv", log=QUIET)
+    np.testing.assert_allclose(plain["auc"], recal["auc"], atol=1e-9)
+    tiny_config.evaluate.split = "tuning"
+    evaluate(tiny_config, best, Path(tiny_config.train.out_dir) / "tuning.csv", log=QUIET)
+    summary = json.loads((Path(tiny_config.train.out_dir) / "tuning.json").read_text())
+    factors = summary["recalibration"]["rate_factor_by_landmark"]
+    assert factors and any(abs(f - 1) > 0.01 for f in factors.values())
+    assert any(c["observed"] > 0 for c in summary["calibration"]["by_landmark"])
+    for c in summary["calibration"]["by_landmark"]:
+        if c["observed"] > 0:
+            assert c["expected_over_observed"] == pytest.approx(1.0, rel=1e-4)

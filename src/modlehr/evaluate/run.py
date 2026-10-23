@@ -20,6 +20,10 @@ averaged over everyone. Reported as expected
 over observed (1 is calibrated), overall and per landmark, and as a table of predicted against
 observed per (patient, target) by risk bin.
 
+With evaluate.recalibrate, every rate at a landmark is first scaled by one factor, fit on the tuning split so
+that its expected number of new targets equals the observed one; AUCs do not change, and calibration on the
+evaluation split shows what is left once the overall level is right.
+
 Likelihood. The mean negative log-likelihood per prediction of the training objective, split
 into its event part (which target comes next) and its time part (how long until it). AUC is
 computed within age groups and only ranks patients, so it cannot see whether the model gets
@@ -169,6 +173,26 @@ def calibration(task, risk: np.ndarray, death: int | None) -> tuple[dict, pd.Dat
     return summary, table.drop(columns="bin")
 
 
+def recalibration_shift(model: ModLEHR, split: PreparedSplit, vocab: Vocabulary, first: np.ndarray, landmark: float,
+                        horizon: float, controls: str, batch_size: int, device: torch.device, death: int | None) -> float:
+    """The log of the factor that, added to every log-rate at this landmark, makes the expected number of new
+    targets in the window equal the observed (censoring-weighted) number on `split` (the tuning split)."""
+    task = landmark_task(split, vocab, landmark, horizon, first, controls)
+    if not len(task.subjects):
+        return 0.0
+    outputs = landmark_outputs(model, split, task.subjects, landmark, batch_size, device)
+    observed = calibration(task, np.zeros((len(task.subjects), len(vocab.targets))), death)[0]["observed"]
+    open_ = task.first > landmark
+    expected = lambda s: float(np.where(open_, observed_probabilities(model, outputs + s, horizon, death), 0.0).sum())  # noqa: E731
+    if observed <= 0:
+        return 0.0
+    lo, hi = -10.0, 10.0  # expected rises with the shift: bisect for expected = observed
+    for _ in range(50):
+        mid = (lo + hi) / 2
+        lo, hi = (mid, hi) if expected(mid) < observed else (lo, mid)
+    return (lo + hi) / 2
+
+
 def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = None, log=print,
              delphi_repo: str | Path | None = None) -> pd.DataFrame:
     prepared = Path(cfg.data.prepared_dir)
@@ -179,12 +203,19 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
     H, min_cases = cfg.evaluate.horizon_years, cfg.evaluate.min_cases
     death = vocab.targets.index(meds.death_code) if meds.death_code in vocab.targets else None
 
-    rows, calib, calib_tables = [], [], []
+    rows, calib, calib_tables, shifts = [], [], [], {}
+    if cfg.evaluate.recalibrate:
+        tuning = open_split(prepared, meds.tuning_split)
+        tuning_first = split_first_ages(tuning, vocab)
     for L in cfg.evaluate.landmarks:
         task = landmark_task(split, vocab, L, H, first, cfg.evaluate.controls)
         if not len(task.subjects):
             continue
         outputs = landmark_outputs(model, split, task.subjects, L, cfg.evaluate.batch_size, device)
+        if cfg.evaluate.recalibrate:
+            shifts[L] = recalibration_shift(model, tuning, vocab, tuning_first, L, H, cfg.evaluate.controls,
+                                            cfg.evaluate.batch_size, device, death)
+            outputs = outputs + shifts[L]
         risk = model.head.risk(outputs, H, cfg.evaluate.risk).numpy()
         c_summary, c_table = calibration(task, observed_probabilities(model, outputs, H, death), death)
         calib.append(c_summary)
@@ -207,7 +238,10 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
                                   "counts": "targets first occurring in the window", "observed": "censoring-weighted",
                                   "expected": "probability each target is recorded in the window, before death",
                                   "by_landmark": calib}
-    if cfg.evaluate.likelihood:
+    if cfg.evaluate.recalibrate:
+        summary["recalibration"] = {"split": meds.tuning_split, "rate_factor_by_landmark": {
+            f"{L:g}": float(np.exp(v)) for L, v in shifts.items()}}
+    if cfg.evaluate.likelihood:  # of the model as trained, not recalibrated
         summary["likelihood"] = likelihood(model, split, cfg.evaluate.batch_size, device)
 
     out_csv = Path(out_csv) if out_csv else Path(cfg.train.out_dir) / "evaluate.csv"
@@ -230,6 +264,9 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
         log(f"[evaluate] calibration: expected / observed new targets within {H:g} years of the landmark = "
             f"{summary['calibration']['expected_over_observed']:.2f} (1 is calibrated; "
             + ", ".join(f"age {c['landmark']:g}: {c['expected_over_observed']:.2f}" for c in calib) + ")")
+    if shifts:
+        log("[evaluate] recalibrated on the tuning split: rates times "
+            + ", ".join(f"{np.exp(v):.2f} at {L:g}" for L, v in shifts.items()))
     if "likelihood" in summary:
         lk = summary["likelihood"]
         log(f"[evaluate] negative log-likelihood per prediction {lk['nll']:.3f} "
