@@ -1,0 +1,10 @@
+# Model-size curve: the plain GPT of mimic_iv_core_gpt.yaml at width 512 with 8 layers and 8 heads, with the
+# same data, schedule and evaluation (the plain GPT is 256 wide with 6 layers). scripts/fir/scaling.sh trains
+# it on 10% to 100% of the training subjects (train.data_fraction).
+defaults: [mimic_iv_core_gpt.yaml]
+model:
+  d_model: 512
+  n_layers: 8
+  n_heads: 8
+train:
+  out_dir: runs/mimic_iv_core_gpt_m

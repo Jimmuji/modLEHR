@@ -23,21 +23,28 @@ mkdir -p "$RAW"
 
 sha() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
 
-# physionet.org answers curl with 403 before it looks at the credentials, so this uses wget, which its
-# own instructions use. The credentials go to wget in a file only this user can read, removed on exit,
-# so they never appear in the process list.
-command -v wget >/dev/null || { echo "wget is needed (physionet.org refuses curl); on a Mac: brew install wget"; exit 1; }
+# physionet.org answers curl's own user agent with 403 before it looks at the credentials, and a wget
+# user agent with 401 (it then asks for them): this uses wget when there is one, else curl presenting
+# itself as wget (a Mac has curl but no wget). The credentials go to either in a file only this user can
+# read, removed on exit, so they never appear in the process list.
 CRED=$(umask 077 && mktemp "${TMPDIR:-/tmp}/physionet.XXXXXX")
 trap 'rm -f "$CRED"' EXIT
-printf 'user = %s\npassword = %s\n' "$PN_USER" "$PN_PASS" > "$CRED"
+if command -v wget >/dev/null; then
+  printf 'user = %s\npassword = %s\n' "$PN_USER" "$PN_PASS" > "$CRED"
+  fetch() { wget -q -c --tries=3 --timeout=60 --config="$CRED" -O "$1" "$2"; }
+else
+  esc() { local v=${1//\\/\\\\}; printf '%s' "${v//\"/\\\"}"; }  # for a quoted curl config value
+  printf 'user = "%s:%s"\n' "$(esc "$PN_USER")" "$(esc "$PN_PASS")" > "$CRED"
+  fetch() { curl -sS -f -L -C - --retry 3 --connect-timeout 60 -A "Wget/1.21.4" -K "$CRED" -o "$1" "$2"; }
+fi
 unset PN_PASS
 
 get() {  # get <relative path>: resume a partial file; an error page (403, 401) is never saved as the file
   local rel="$1" dest="$RAW/$1"
   mkdir -p "$(dirname "$dest")"
   for attempt in 1 2 3 4 5; do
-    wget -q -c --tries=3 --timeout=60 --config="$CRED" -O "$dest" "$BASE/$rel" && return 0
-    [ -s "$dest" ] || rm -f "$dest"  # wget leaves an empty file behind when the request fails
+    fetch "$dest" "$BASE/$rel" && return 0
+    [ -s "$dest" ] || rm -f "$dest"  # an empty file is left behind when the request fails
     echo "  retry $attempt: $rel"
     sleep 10
   done

@@ -29,6 +29,9 @@ def test_repo_configs_load():
     assert mimic.data.target_grouping == "icd_gems" and mimic.model.max_len == 512
     for path in sorted((REPO / "configs/experiment").glob("mimic_iv_core_gpt_*.yaml")):
         variant = load_config(path)  # a model file layered on top must not reset the size
+        if path.stem.rsplit("_", 1)[-1] in ("xs", "m", "l"):  # the model-size curve sets its own width
+            assert variant.model.max_len == 512 and variant.model.d_model != 256, path.name
+            continue
         assert (variant.model.d_model, variant.model.n_heads, variant.model.max_len) == (256, 8, 512), path.name
 
 
