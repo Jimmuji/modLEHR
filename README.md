@@ -286,7 +286,11 @@ so `modlehr train --resume` continues a stopped run exactly where it was, and `-
 ends a run early on purpose (a job's time limit). On a GPU, `train.precision: bf16` runs the forward
 pass in bfloat16 and `train.grad_accum: k` adds up the gradients of k batches per step.
 `train.patience: n` stops a run after n checks without a new lowest tuning loss; the schedule still
-follows `train.steps`, so the stopped run is the start of the full one. `train.data_fraction: 0.25`
+follows `train.steps`, so the stopped run is the start of the full one, and resuming it with
+`train.patience: null` continues it on the same path. The tuning loss is an estimate from
+`eval_batches` batches, and an early low value can stop a run that would have improved: on MIMIC-IV,
+patience 5 stopped one run at an AUC of 0.53 where its other seeds reached 0.63, so the MIMIC-IV
+configs train every step. `train.data_fraction: 0.25`
 trains on a fixed quarter of the training subjects (the same for every seed, inside the half), for
 a learning curve.
 

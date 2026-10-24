@@ -5,8 +5,10 @@
 What moves the results
 - `train.patience` stops a run after that many tuning checks without a new best; the stopped run is the
   start of the full run (same schedule), and `--resume` on it trains no further. On the October 19 MIMIC-IV
-  runs, 5 checks would have stopped them at 13,000 to 19,000 of 20,000 steps with the same best.pt;
-  configs/experiment/mimic_iv_core_gpt.yaml now sets it
+  runs, 5 checks would have stopped them at 13,000 to 19,000 of 20,000 steps with the same best.pt, but on
+  the October 23 runs it stopped some on an early, noisy low (one at an AUC of 0.53), so the MIMIC-IV
+  configs do not use it. A stopped run resumed with `train.patience: null` continues on the same path
+  (scripts/fir/continue_stopped.sh)
 - `train.data_fraction` trains (and `modlehr baseline` fits) on a fixed share of the training subjects,
   nested across shares and the same for every seed, for a learning curve (mimic_iv_core_gpt_frac10/25/50)
 - `data.washout_years` starts follow-up later, so a first stay's diagnoses are history, not new cases

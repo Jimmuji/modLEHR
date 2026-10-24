@@ -204,6 +204,11 @@ def test_early_stopping(tiny_config, tmp_path):
     assert state["stopped_early"] and state["checks_since_best"] == 1
     train(stopped, log=QUIET, resume=True)
     assert len(read(stopped.train.out_dir)) == len(b)
+    stopped.train.patience = None  # resumed without patience, it continues along the full run's path
+    train(stopped, log=QUIET, resume=True)
+    c = read(stopped.train.out_dir)
+    assert [r["step"] for r in c] == [r["step"] for r in a]
+    assert c[-1]["tune_loss"] == pytest.approx(a[-1]["tune_loss"], abs=1e-5)
 
 
 def test_data_fraction_trains_and_fits_on_one_nested_subset(tiny_config):

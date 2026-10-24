@@ -138,8 +138,9 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
         if device.type == "mps" and state.get("mps_rng") is not None:  # dropout on an Apple GPU
             torch.mps.set_rng_state(state["mps_rng"].cpu())
         best, first_step, since_best = state["best_tune_loss"], state["step"] + 1, state.get("checks_since_best", 0)
-        if state.get("stopped_early"):
-            log(f"[train] this run stopped early after step {state['step']} (train.patience); nothing to resume")
+        if state.get("stopped_early") and cfg.train.patience is not None:
+            log(f"[train] this run stopped early after step {state['step']} (train.patience); nothing to resume "
+                "(with train.patience: null it continues to train.steps)")
             tracker.finish()
             return out_dir / "best.pt"
         log(f"[train] resuming after step {state['step']} (best tuning loss so far {best:.4f})")

@@ -121,6 +121,9 @@ class TrainConfig:
     # Early stopping: end the run after this many tuning checks in a row without a new lowest tuning loss
     # (null: run every step). The learning-rate schedule still follows train.steps, so a stopped run is the
     # first part of the full run, and best.pt is the same unless a lower tuning loss would have come later.
+    # The tuning loss is an estimate from eval_batches batches: with the default 20 it moved by about 1 between
+    # checks on MIMIC-IV, so an early low value can stop a run that would have gone on improving. A stopped
+    # run resumed with patience: null continues to train.steps on the same path.
     patience: int | None = None
     # Train on this share of the training subjects, for a learning curve: the first share of one fixed
     # random order (seed 0, whatever train.seed is), so smaller shares are subsets of larger ones and every
