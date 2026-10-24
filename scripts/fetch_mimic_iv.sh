@@ -4,6 +4,10 @@
 #   scripts/fetch_mimic_iv.sh                               # MIMIC-IV 3.1
 #   FILES="hosp/omr.csv.gz" scripts/fetch_mimic_iv.sh        # only these files of the release
 #   RELEASE=mimic-iv-note/2.2 scripts/fetch_mimic_iv.sh     # MIMIC-IV-Note (its own data use agreement)
+#   PARALLEL=6 scripts/fetch_mimic_iv.sh                    # six files at a time
+#
+# physionet.org serves each connection at about 50 KB/s (October 2026), so the 10 GB release takes about
+# two days one file at a time; six files at a time reach about 200 KB/s in all.
 #
 # The username (or PN_USER) and password are typed at the prompt and kept in this shell only.
 # MIMIC-IV is credentialed data: run this yourself, on a machine you control. Files that are
@@ -15,7 +19,8 @@
 set -uo pipefail
 RELEASE="${RELEASE:-mimiciv/3.1}"
 RAW="${RAW:-$HOME/mimic_dl/physionet.org/files/$RELEASE}"
-BASE="https://physionet.org/files/$RELEASE"
+BASE="${BASE:-https://physionet.org/files/$RELEASE}"
+PARALLEL="${PARALLEL:-1}"
 PN_USER="${PN_USER:-}"
 [ -n "$PN_USER" ] || read -r -p "PhysioNet username: " PN_USER
 read -r -s -p "PhysioNet password for $PN_USER: " PN_PASS; echo
@@ -76,10 +81,11 @@ if [ -n "${FILES:-}" ]; then  # only the files asked for, each checked against t
   echo "fetching ${#files[@]} of them: $FILES"
 fi
 
-for rel in "${files[@]}"; do
+fetch_one() {  # fetch_one <relative path>: skip it when complete, else fetch it and check its hash
+  local rel="$1" want
   want=$(awk -v f="$rel" '$2==f {print $1}' "$RAW/SHA256SUMS.txt")
   if [ -f "$RAW/$rel" ] && [ "$(sha "$RAW/$rel")" = "$want" ]; then
-    continue
+    return 0
   fi
   echo "fetching $rel"
   get "$rel"
@@ -89,7 +95,14 @@ for rel in "${files[@]}"; do
     rm -f "$RAW/$rel"
     get "$rel"
   fi
+  echo "done $rel"
+}
+
+for rel in "${files[@]}"; do  # PARALLEL files at a time
+  while [ "$(jobs -rp | wc -l)" -ge "$PARALLEL" ]; do sleep 2; done
+  fetch_one "$rel" &
 done
+wait
 
 echo "=== checking ==="
 bad=0
