@@ -8,6 +8,7 @@ Every row is one choice changed from the plain GPT (configs/experiment/mimic_iv_
 of four kinds:
 
     model part      a registered part swapped; the landmark tasks are the plain GPT's
+    model size      the plain GPT made smaller or larger (scripts/fir/scaling.sh)
     training data   what the model learns from changes, the tasks do not ("no event" tokens, a share of
                     the training subjects)
     task            who or what is scored changes: where follow-up starts, a washout, when diagnoses are
@@ -46,6 +47,9 @@ PARTS = {"rope_age": "Rotary position over age", "alibi_age": "ALiBi over age", 
          "rmsnorm": "RMSNorm", "swiglu": "SwiGLU feed-forward", "moe": "Mixture of experts"}
 # (kind, label, experiment, evaluate stem, logistic run, reference for "change")
 SETTINGS = [
+    ("model size", "Model of 1.1M parameters (not 5.3M)", "xs", "evaluate", "logistic", PLAIN),
+    ("model size", "Model of 27M parameters", "m", "evaluate", "logistic", PLAIN),
+    ("model size", "Model of 87M parameters", "l", "evaluate", "logistic", PLAIN),
     ("training data", '"No event" tokens every 5 years', "no_event", "evaluate", "no_event_logistic", PLAIN),
     ("training data", "50% of training subjects", "frac50", "evaluate", "frac50_logistic", PLAIN),
     ("training data", "25% of training subjects", "frac25", "evaluate", "frac25_logistic", PLAIN),
@@ -157,12 +161,13 @@ def study(root: Path, previous: Path | None, targets_file: Path) -> pd.DataFrame
         runs = load(root, name(exp), stem, targets)
         if not runs or not plain:
             continue
-        row(kind, label, runs, plain, load(root, f"{PLAIN}_{lr}", "evaluate", targets), kind == "training data",
+        row(kind, label, runs, plain, load(root, f"{PLAIN}_{lr}", "evaluate", targets), kind in ("model size", "training data"),
             calibrated=targets is None)
     return pd.DataFrame(rows)
 
 
-COLORS = {"reference": "#111827", "model part": "#9CA3AF", "training data": "#2563EB", "task": "#D97706", "readout": "#7C3AED"}
+COLORS = {"reference": "#111827", "model part": "#9CA3AF", "model size": "#4B5563", "training data": "#2563EB",
+          "task": "#D97706", "readout": "#7C3AED"}
 
 
 def figure(table: pd.DataFrame, path: Path) -> None:
