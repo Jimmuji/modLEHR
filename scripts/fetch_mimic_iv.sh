@@ -45,16 +45,21 @@ else
 fi
 unset PN_PASS
 
-get() {  # get <relative path>: resume a partial file; an error page (403, 401) is never saved as the file
-  local rel="$1" dest="$RAW/$1"
+get() {  # get <relative path>: resume a partial file; an error page (403, 401) is never saved as the file.
+  # A dropped connection keeps the part already here: retry as long as the file keeps growing, and give up
+  # (keeping the part, for the next run) only after 5 attempts in a row add nothing.
+  local rel="$1" dest="$RAW/$1" stalled=0 before after
   mkdir -p "$(dirname "$dest")"
-  for attempt in 1 2 3 4 5; do
+  while [ "$stalled" -lt 5 ]; do
+    before=$(stat -f %z "$dest" 2>/dev/null || stat -c %s "$dest" 2>/dev/null || echo 0)
     fetch "$dest" "$BASE/$rel" && return 0
     [ -s "$dest" ] || rm -f "$dest"  # an empty file is left behind when the request fails
-    echo "  retry $attempt: $rel"
+    after=$(stat -f %z "$dest" 2>/dev/null || stat -c %s "$dest" 2>/dev/null || echo 0)
+    if [ "$after" -gt "$before" ]; then stalled=0; else stalled=$((stalled + 1)); fi
+    echo "  retry: $rel ($((after / 1000000)) MB so far)"
     sleep 10
   done
-  echo "  FAILED: $rel"
+  echo "  FAILED for now: $rel (the part downloaded is kept; run this script again to resume)"
   return 1
 }
 
@@ -92,7 +97,7 @@ fetch_one() {  # fetch_one <relative path>: skip it when complete, else fetch it
     return 0
   fi
   echo "fetching $rel"
-  get "$rel"
+  get "$rel" || return 1  # incomplete: keep the part, do not judge its hash
   if [ -f "$RAW/$rel" ] && [ "$(sha "$RAW/$rel")" != "$want" ]; then
     # resuming onto a corrupt partial file cannot fix it; start this one over
     echo "  hash does not match after resuming; downloading $rel again from the start"
