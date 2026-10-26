@@ -23,9 +23,16 @@ RAW="${RAW:-$HOME/mimic_dl/physionet.org/files/$RELEASE}"
 BASE="${BASE:-https://physionet.org/files/$RELEASE}"
 PARALLEL="${PARALLEL:-1}"
 PN_USER="${PN_USER:-}"
+mkdir -p "$RAW"
+# One run at a time: two runs resume the same partial file at once and interleave their bytes into it
+# (on 2026-10-26 a run left in a closed terminal did this to the two largest files).
+if [ -f "$RAW/.fetch.pid" ] && kill -0 "$(cat "$RAW/.fetch.pid")" 2>/dev/null; then
+  echo "fetch_mimic_iv.sh is already running (pid $(cat "$RAW/.fetch.pid")); stop it before starting another"
+  exit 1
+fi
+echo $$ > "$RAW/.fetch.pid"
 [ -n "$PN_USER" ] || read -r -p "PhysioNet username: " PN_USER
 read -r -s -p "PhysioNet password for $PN_USER: " PN_PASS; echo
-mkdir -p "$RAW"
 
 sha() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 256 "$1"; fi | cut -d' ' -f1; }
 
@@ -34,7 +41,7 @@ sha() { if command -v sha256sum >/dev/null; then sha256sum "$1"; else shasum -a 
 # itself as wget (a Mac has curl but no wget). The credentials go to either in a file only this user can
 # read, removed on exit, so they never appear in the process list.
 CRED=$(umask 077 && mktemp "${TMPDIR:-/tmp}/physionet.XXXXXX")
-trap 'rm -f "$CRED"' EXIT
+trap 'rm -f "$CRED" "$RAW/.fetch.pid"' EXIT
 if command -v wget >/dev/null; then
   printf 'user = %s\npassword = %s\n' "$PN_USER" "$PN_PASS" > "$CRED"
   fetch() { wget -q -c --tries=3 --timeout=60 --config="$CRED" -O "$1" "$2"; }
