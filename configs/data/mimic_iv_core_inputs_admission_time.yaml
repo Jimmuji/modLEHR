@@ -1,0 +1,9 @@
+# mimic_iv_core_inputs.yaml with each stay's diagnoses timed at its admission (`modlehr convert mimic-iv-core
+# --diagnosis-time admission --extra procedures,medications`). With diagnoses at discharge, a landmark inside
+# a stay sees that stay's medications but not yet its diagnoses, so the model can score a disease the stay is
+# being treated for as a new one; timed at admission, the stay's diagnoses come first. Its diagnoses-only arm
+# is mimic_iv_core_admission_time.yaml.
+defaults: [mimic_iv_core_inputs.yaml]
+data:
+  meds_dir: data/mimic_iv_core_meds_inputs_admit
+  prepared_dir: runs/prepared/mimic_iv_core_inputs_admission_time

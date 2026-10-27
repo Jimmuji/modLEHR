@@ -1,0 +1,11 @@
+# mimic_iv_core_inputs.yaml with procedures only (no medications).
+defaults: [mimic_iv_core_inputs.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_core_procedures
+  events:
+    - {name: sex, role: static, prefix: "GENDER//"}
+    - {name: death, role: target, codes: ["MEDS_DEATH"]}
+    - {name: diagnoses, role: target, prefix: "DIAGNOSIS//ICD//"}
+    - {name: admissions, role: context, prefix: "HOSPITAL_ADMISSION//"}
+    - {name: emergency, role: context, codes: ["ED_REGISTRATION"]}
+    - {name: procedures, role: context, prefix: "PROCEDURE//", thin_years: 0.25}

@@ -55,6 +55,7 @@ def build_parser() -> argparse.ArgumentParser:
     conv.add_argument("--subjects", type=int, default=2000, help="toy: how many synthetic subjects")
     conv.add_argument("--diagnosis-time", choices=["discharge", "admission"], default="discharge",
                       help="mimic-iv-core: time a stay's diagnoses at its discharge (as the official ETL) or admission")
+    conv.add_argument("--extra", default="", help="mimic-iv-core: inputs to add, comma-separated: procedures, medications")
 
     val = sub.add_parser("validate", help="check a MEDS dataset against the meds schemas")
     val.add_argument("--meds-dir", required=True)
@@ -137,7 +138,8 @@ def main(argv: list[str] | None = None) -> None:
             print(convert(args.raw_dir, args.out))
         elif args.source == "mimic-iv-core":
             from modlehr.data.adapters.mimic_iv_core import convert
-            print(convert(args.raw_dir, args.out, diagnosis_time=args.diagnosis_time))
+            print(convert(args.raw_dir, args.out, diagnosis_time=args.diagnosis_time,
+                          extra=tuple(e.strip() for e in args.extra.split(",") if e.strip())))
         else:
             from modlehr.data.adapters.mimic_iv_note import convert
             if not args.meds_dir:

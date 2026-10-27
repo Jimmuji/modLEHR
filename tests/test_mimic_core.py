@@ -133,3 +133,36 @@ def test_core_adapter_adds_outpatient_measurements(tmp_path):
     assert bmi["numeric_value"] == 27.5 and bmi["time"] == pd.Timestamp("2152-03-01")
     assert pd.isna(bp["numeric_value"]) and bp["text_value"] == "120/80"
     assert pd.isna(events.loc["DIAGNOSIS//ICD//10//I10", "numeric_value"])  # other events keep no value
+
+
+def test_core_adapter_adds_procedures_and_medications(tmp_path):
+    """extra=("procedures", "medications") adds procedures_icd at its chartdate and prescriptions at their start,
+    drug names upper-cased into one code; without extra neither table is read."""
+    raw = write_raw(tmp_path / "raw")
+    pd.DataFrame([
+        {"subject_id": 1, "hadm_id": 11, "seq_num": 1, "chartdate": "2151-01-02", "icd_code": "3961", "icd_version": 9},
+    ]).to_csv(raw / "hosp/procedures_icd.csv.gz", index=False)
+    pd.DataFrame([{"icd_code": "3961", "icd_version": 9, "long_title": "Extracorporeal circulation"}
+                  ]).to_csv(raw / "hosp/d_icd_procedures.csv.gz", index=False)
+    pd.DataFrame([
+        {"subject_id": 1, "hadm_id": 11, "starttime": "2151-01-01 10:00:00", "drug": "Insulin "},
+        {"subject_id": 1, "hadm_id": 12, "starttime": "2153-06-01 10:00:00", "drug": "INSULIN"},
+        {"subject_id": 2, "hadm_id": 21, "starttime": "2161-02-01 09:00:00", "drug": None},
+    ]).to_csv(raw / "hosp/prescriptions.csv.gz", index=False)
+
+    plain = convert(raw, tmp_path / "plain", held_out=0.0, tuning=0.0)
+    assert "procedures_rows" not in plain
+    out = tmp_path / "inputs"
+    summary = convert(raw, out, held_out=0.0, tuning=0.0, extra=("procedures", "medications"))
+    assert summary["procedures_rows"] == 1 and summary["medications_rows"] == 2
+    assert summary["events"] == plain["events"] + 3
+
+    ds = open_meds(out, validate=True)
+    events = pd.concat([ds.read_shard(s) for s in ds.shards()])
+    assert list(events.loc[events["code"] == "MEDICATION//START//INSULIN", "time"]) == [
+        pd.Timestamp("2151-01-01 10:00"), pd.Timestamp("2153-06-01 10:00")]
+    assert list(events.loc[events["code"] == "PROCEDURE//ICD//9//3961", "time"]) == [pd.Timestamp("2151-01-02")]
+    codes = pd.read_parquet(out / meds.code_metadata_filepath).set_index("code")
+    assert codes.loc["PROCEDURE//ICD//9//3961", "description"] == "Extracorporeal circulation"
+    with pytest.raises(ValueError, match="extra"):
+        convert(raw, tmp_path / "bad", extra=("labs",))

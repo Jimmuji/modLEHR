@@ -17,11 +17,19 @@ the value when it is a number, so a measurement rule can use it (blood pressure,
 text only). These are the closest MIMIC-IV has to Delphi-2M's lifestyle inputs (BMI, smoking,
 alcohol); smoking appears only as diagnosis codes.
 
+`extra` adds inputs that are not diagnoses, from tables of the same release (all in hosp/, so they are
+there before labevents and chartevents are):
+  procedures    procedures_icd.csv.gz → PROCEDURE//ICD//<9|10>//<icd_code>, at its chartdate
+  medications   prescriptions.csv.gz  → MEDICATION//START//<DRUG>, at its starttime (the drug name
+                upper-cased, so "Insulin" and "INSULIN" are one code)
+They are model inputs only (role context in the config); configs/data/mimic_iv_core_inputs.yaml uses them.
+
     subject_id     MIMIC-IV's own subject_id
     time           event datetime; null for sex
     code           MEDS_BIRTH, MEDS_DEATH, GENDER//F|M,
                    DIAGNOSIS//ICD//<9|10>//<icd_code>   at hospital discharge (or admission, below)
                    HOSPITAL_ADMISSION//<type>//<location>, ED_REGISTRATION
+                   PROCEDURE//ICD//<9|10>//<icd_code>, MEDICATION//START//<DRUG>   with `extra`
     numeric_value  the omr value when it is a number; otherwise empty
     text_value     the omr value as written
 
@@ -56,6 +64,7 @@ from modlehr import __version__
 
 TABLES = ("hosp/patients.csv.gz", "hosp/admissions.csv.gz", "hosp/diagnoses_icd.csv.gz")
 OMR = "hosp/omr.csv.gz"  # optional
+EXTRA = {"procedures": "hosp/procedures_icd.csv.gz", "medications": "hosp/prescriptions.csv.gz"}
 SUBJECTS_PER_SHARD = 50_000
 
 
@@ -108,13 +117,29 @@ def _omr_events(raw: Path) -> pd.DataFrame:
                          "numeric_value": pd.to_numeric(value, errors="coerce"), "text_value": value})
 
 
+def _procedure_events(raw: Path) -> pd.DataFrame:
+    p = pd.read_csv(raw / EXTRA["procedures"], usecols=["subject_id", "chartdate", "icd_code", "icd_version"],
+                    dtype={"icd_code": str})
+    code = "PROCEDURE//ICD//" + p["icd_version"].astype(str) + "//" + p["icd_code"].str.strip()
+    return pd.DataFrame({"subject_id": p["subject_id"], "time": _time(p["chartdate"]), "code": code})
+
+
+def _medication_events(raw: Path) -> pd.DataFrame:
+    m = pd.read_csv(raw / EXTRA["medications"], usecols=["subject_id", "starttime", "drug"], dtype={"drug": str})
+    m = m.dropna(subset=["drug"])
+    return pd.DataFrame({"subject_id": m["subject_id"], "time": _time(m["starttime"]),
+                         "code": "MEDICATION//START//" + m["drug"].str.strip().str.upper()})
+
+
 def _code_metadata(raw: Path, codes: pd.Series) -> pd.DataFrame:
-    titles = pd.DataFrame({"code": [], "description": []})
-    path = raw / "hosp/d_icd_diagnoses.csv.gz"
-    if path.exists():
-        t = pd.read_csv(path, dtype={"icd_code": str})
-        titles = pd.DataFrame({"code": "DIAGNOSIS//ICD//" + t["icd_version"].astype(str) + "//" + t["icd_code"].str.strip(),
-                               "description": t["long_title"]})
+    titles = [pd.DataFrame({"code": [], "description": []})]
+    for kind, family in (("diagnoses", "DIAGNOSIS"), ("procedures", "PROCEDURE")):
+        path = raw / f"hosp/d_icd_{kind}.csv.gz"
+        if path.exists():
+            t = pd.read_csv(path, dtype={"icd_code": str})
+            titles.append(pd.DataFrame({"code": f"{family}//ICD//" + t["icd_version"].astype(str) + "//"
+                                        + t["icd_code"].str.strip(), "description": t["long_title"]}))
+    titles = pd.concat(titles, ignore_index=True)
     known = pd.DataFrame({"code": [meds.birth_code, meds.death_code, "GENDER//F", "GENDER//M", "ED_REGISTRATION"],
                           "description": ["Birth", "Death", "Sex: female", "Sex: male", "Emergency department registration"]})
     out = pd.concat([titles, known], ignore_index=True)
@@ -136,12 +161,16 @@ DIAGNOSIS_TIMES = ("discharge", "admission")
 
 
 def convert(raw_dir: str | Path, out_dir: str | Path, held_out: float = 0.2, tuning: float = 0.1,
-            seed: int = 1413, diagnosis_time: str = "discharge") -> dict:
-    """diagnosis_time: when a stay's diagnoses are timed, at its discharge (the official ETL) or admission."""
+            seed: int = 1413, diagnosis_time: str = "discharge", extra: tuple[str, ...] = ()) -> dict:
+    """diagnosis_time: when a stay's diagnoses are timed, at its discharge (the official ETL) or admission.
+    extra: inputs to add besides diagnoses, any of EXTRA ("procedures", "medications")."""
     if diagnosis_time not in DIAGNOSIS_TIMES:
         raise ValueError(f"diagnosis_time must be one of {DIAGNOSIS_TIMES}, not {diagnosis_time!r}")
+    unknown = sorted(set(extra) - set(EXTRA))
+    if unknown:
+        raise ValueError(f"extra must be among {sorted(EXTRA)}, not {unknown}")
     raw_dir, out_dir = Path(raw_dir), Path(out_dir)
-    missing = [t for t in TABLES if not (raw_dir / t).exists()]
+    missing = [t for t in TABLES + tuple(EXTRA[e] for e in extra) if not (raw_dir / t).exists()]
     if missing:
         raise FileNotFoundError(f"{raw_dir} is missing {', '.join(missing)}")
 
@@ -153,6 +182,11 @@ def convert(raw_dir: str | Path, out_dir: str | Path, held_out: float = 0.2, tun
     if (raw_dir / OMR).exists():
         parts.append(_omr_events(raw_dir))
         n_omr = len(parts[-1])
+    extra_rows = {}
+    for name, read in (("procedures", _procedure_events), ("medications", _medication_events)):
+        if name in extra:
+            parts.append(read(raw_dir))
+            extra_rows[name] = len(parts[-1])
     events = pd.concat(parts, ignore_index=True)
     dropped = int(events["time"].isna().sum() - (events["code"].str.startswith("GENDER//")).sum())
     events = events[events["time"].notna() | events["code"].str.startswith("GENDER//")]
@@ -182,9 +216,10 @@ def convert(raw_dir: str | Path, out_dir: str | Path, held_out: float = 0.2, tun
     pq.write_table(pa.Table.from_pandas(splits, preserve_index=False).cast(meds.SubjectSplitSchema.schema()),
                    out_dir / meds.subject_splits_filepath)
     (out_dir / meds.dataset_metadata_filepath).write_text(json.dumps({
-        "dataset_name": "MIMIC-IV 3.1 core (patients, admissions, diagnoses)",
+        "dataset_name": "MIMIC-IV 3.1 core (patients, admissions, diagnoses" + "".join(f", {e}" for e in extra) + ")",
         "etl_name": "modlehr.data.adapters.mimic_iv_core", "etl_version": __version__, "diagnosis_time": diagnosis_time,
+        "extra": list(extra),
         "meds_version": meds.__version__, "created_at": dt.datetime.now().isoformat(timespec="seconds"),
     }, indent=2))
     return {"subjects": len(subjects), "events": int(len(events)), "codes": int(len(codes)),
-            "omr_rows": n_omr, "events_without_a_time": dropped}
+            "omr_rows": n_omr, **{f"{k}_rows": v for k, v in extra_rows.items()}, "events_without_a_time": dropped}

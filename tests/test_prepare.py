@@ -29,10 +29,12 @@ def test_repo_configs_load():
     assert mimic.data.target_grouping == "icd_gems" and mimic.model.max_len == 512
     for path in sorted((REPO / "configs/experiment").glob("mimic_iv_core_gpt_*.yaml")):
         variant = load_config(path)  # a model file layered on top must not reset the size
+        max_len = 1024 if "_inputs" in path.stem or path.stem.endswith(("_procedures", "_medications")) else 512
         if path.stem.rsplit("_", 1)[-1] in ("xs", "m", "l"):  # the model-size curve sets its own width
-            assert variant.model.max_len == 512 and variant.model.d_model != 256, path.name
+            assert variant.model.max_len == max_len and variant.model.d_model != 256, path.name
             continue
-        assert (variant.model.d_model, variant.model.n_heads, variant.model.max_len) == (256, 8, 512), path.name
+        # the extra-input arms (procedures, medications) need the longer context
+        assert (variant.model.d_model, variant.model.n_heads, variant.model.max_len) == (256, 8, max_len), path.name
 
 
 def test_thinning_applies_to_context_events(tiny_config):

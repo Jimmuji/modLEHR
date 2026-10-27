@@ -1,0 +1,9 @@
+# mimic_iv_core_gpt_inputs.yaml at the M size of mimic_iv_core_gpt_m.yaml (width 512, 8 layers, 8 heads):
+# with diagnoses only a larger model did not help; this says whether it does once there is more input.
+defaults: [mimic_iv_core_gpt_inputs.yaml]
+model:
+  d_model: 512
+  n_layers: 8
+  n_heads: 8
+train:
+  out_dir: runs/mimic_iv_core_gpt_inputs_m

@@ -1,0 +1,7 @@
+# The plain GPT of mimic_iv_core_gpt.yaml with the inputs of configs/data/mimic_iv_core_inputs.yaml. The extra
+# inputs make records longer, so the context is 1,024 events (the diagnoses-only GPT's is 512).
+defaults: [mimic_iv_core_gpt.yaml, ../data/mimic_iv_core_inputs.yaml]
+model:
+  max_len: 1024
+train:
+  out_dir: runs/mimic_iv_core_gpt_inputs

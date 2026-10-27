@@ -1,0 +1,20 @@
+# MIMIC-IV diagnoses plus procedures and medications as inputs: written by
+# `modlehr convert mimic-iv-core --extra procedures,medications`, which also reads hosp/procedures_icd and
+# hosp/prescriptions. Targets, follow-up and the target grouping are those of mimic_iv_core.yaml, so its
+# plain GPT is the diagnoses-only arm; mimic_iv_core_procedures.yaml and mimic_iv_core_medications.yaml add
+# one table each. Both tables are recorded in hospital, so one of each code per quarter year is kept, as
+# configs/data/mimic_iv.yaml does for the full ETL.
+#   PROCEDURE//ICD//9//3961     a procedure, at its chartdate
+#   MEDICATION//START//INSULIN  a prescription, at its start (drug name upper-cased)
+defaults: [mimic_iv_core.yaml]
+data:
+  meds_dir: data/mimic_iv_core_meds_inputs
+  prepared_dir: runs/prepared/mimic_iv_core_inputs
+  events:
+    - {name: sex, role: static, prefix: "GENDER//"}
+    - {name: death, role: target, codes: ["MEDS_DEATH"]}
+    - {name: diagnoses, role: target, prefix: "DIAGNOSIS//ICD//"}
+    - {name: admissions, role: context, prefix: "HOSPITAL_ADMISSION//"}
+    - {name: emergency, role: context, codes: ["ED_REGISTRATION"]}
+    - {name: procedures, role: context, prefix: "PROCEDURE//", thin_years: 0.25}
+    - {name: medications, role: context, prefix: "MEDICATION//START//", thin_years: 0.25}
