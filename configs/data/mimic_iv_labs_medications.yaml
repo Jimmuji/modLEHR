@@ -1,0 +1,13 @@
+# mimic_iv_labs.yaml plus medications (pharmacy starts) and ICD procedures; mimic_iv.yaml adds the ICU on top.
+defaults: [mimic_iv.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_labs_medications
+  events:
+    - {name: sex, role: static, prefix: "GENDER//"}
+    - {name: death, role: target, codes: ["MEDS_DEATH"]}
+    - {name: diagnoses, role: target, prefix: "DIAGNOSIS//ICD//"}
+    - {name: admissions, role: context, prefix: "HOSPITAL_ADMISSION//"}
+    - {name: emergency, role: context, codes: ["ED_REGISTRATION"]}
+    - {name: hospital_labs, role: measurement, prefix: "LAB//RESULT//", thin_years: 0.25}
+    - {name: medications, role: context, prefix: "MEDICATION//START//", thin_years: 0.25}
+    - {name: procedures, role: context, prefix: "PROCEDURE//ICD//", thin_years: 0.25}

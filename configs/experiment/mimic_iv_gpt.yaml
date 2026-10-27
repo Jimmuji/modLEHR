@@ -1,11 +1,13 @@
-# Plain GPT on full MIMIC-IV. A starting point: sizes and steps are meant to be tuned.
+# Plain GPT on full MIMIC-IV: the model and schedule of mimic_iv_core_gpt.yaml, with a context of 1,024 events
+# for the longer records (as the core arms with procedures and medications). The last arm of the inputs curve
+# (configs/data/mimic_iv_diagnoses.yaml).
 # On a CUDA GPU add --set train.precision=bf16 (and --set train.compile=true for long runs).
 defaults: [../data/mimic_iv.yaml, ../model/gpt_baseline.yaml]
 model:
   d_model: 256
   n_layers: 6
   n_heads: 8
-  max_len: 512
+  max_len: 1024
 train:
   out_dir: runs/mimic_iv_gpt
   batch_size: 64

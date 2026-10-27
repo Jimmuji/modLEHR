@@ -1,0 +1,4 @@
+# The plain GPT of mimic_iv_gpt.yaml on the inputs of configs/data/mimic_iv_labs.yaml.
+defaults: [mimic_iv_gpt.yaml, ../data/mimic_iv_labs.yaml]
+train:
+  out_dir: runs/mimic_iv_gpt_labs

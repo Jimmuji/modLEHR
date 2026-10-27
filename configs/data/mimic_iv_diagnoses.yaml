@@ -1,0 +1,15 @@
+# Full MIMIC-IV (the official ETL, configs/data/mimic_iv.yaml) cut down to the inputs of mimic_iv_core.yaml:
+# sex, diagnoses, death and hospital contacts. The first arm of the inputs curve, which adds one kind of input
+# at a time: diagnoses → + hospital labs (mimic_iv_labs.yaml) → + medications and procedures
+# (mimic_iv_labs_medications.yaml) → + ICU charts and stays (mimic_iv.yaml). It should match the core
+# adapter's GPT; every arm has the same targets, so the curve says what each input adds.
+defaults: [mimic_iv.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_diagnoses
+  value_mode: none
+  events:
+    - {name: sex, role: static, prefix: "GENDER//"}
+    - {name: death, role: target, codes: ["MEDS_DEATH"]}
+    - {name: diagnoses, role: target, prefix: "DIAGNOSIS//ICD//"}
+    - {name: admissions, role: context, prefix: "HOSPITAL_ADMISSION//"}
+    - {name: emergency, role: context, codes: ["ED_REGISTRATION"]}

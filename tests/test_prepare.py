@@ -26,7 +26,7 @@ def test_repo_configs_load():
     for path in sorted((REPO / "configs/experiment").glob("*.yaml")):  # every experiment config resolves
         load_config(path)
     mimic = load_config(REPO / "configs/experiment/mimic_iv_gpt.yaml")
-    assert mimic.data.target_grouping == "icd_gems" and mimic.model.max_len == 512
+    assert mimic.data.target_grouping == "icd_gems" and mimic.model.max_len == 1024
     for path in sorted((REPO / "configs/experiment").glob("mimic_iv_core_gpt_*.yaml")):
         variant = load_config(path)  # a model file layered on top must not reset the size
         max_len = 1024 if "_inputs" in path.stem or path.stem.endswith(("_procedures", "_medications")) else 512
