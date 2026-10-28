@@ -26,6 +26,8 @@ GPT assembled from parts with Delphi-2M's model and training, at the experiment'
 It is checked against Delphi's own code: given the same prepared data (through `modlehr export-delphi`,
 below) and seed, the two end with the same weights on a CPU, parameter for parameter
 (`tests/test_delphi.py`, run when a clone of Delphi's code is in `.cache/delphi` or `DELPHI_REPO`).
+On a GPU, on MIMIC-IV diagnoses with seeds 1 to 3, the two give the same landmark AUC (0.673, 0.675,
+0.674), held-out likelihood and Delphi-2M's AUC to the digits reported.
 
 
 Its checkpoints are scored like a modLEHR model's: the log-rates per day of the modLEHR targets are
