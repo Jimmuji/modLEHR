@@ -71,8 +71,6 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--seed", type=int, help="set train.seed and add _s<seed> to train.out_dir")
         if name in ("evaluate", "generate", "simulate", "delphi"):
             p.add_argument("--checkpoint", help="default: <train.out_dir>/best.pt")
-        if name in ("evaluate", "delphi"):
-            p.add_argument("--delphi-repo", help="a clone of Delphi-2M's code, to score a checkpoint its train.py wrote")
         if name == "export-delphi":
             p.add_argument("--out", help="default: <train.out_dir>_delphi_data")
             p.add_argument("--delphi-out", help="where Delphi's train.py writes its checkpoint; default: <train.out_dir>_delphi_code")
@@ -171,9 +169,9 @@ def main(argv: list[str] | None = None) -> None:
         train(cfg, resume=args.resume, stop_after=args.stop_after)
     elif args.command == "evaluate":
         from modlehr.evaluate.run import evaluate
-        evaluate(cfg, checkpoint, args.out, delphi_repo=args.delphi_repo)
+        evaluate(cfg, checkpoint, args.out)
     elif args.command == "export-delphi":
-        from modlehr.external.delphi import export
+        from modlehr.train.delphi import export
         export(cfg, args.out or f"{cfg.train.out_dir}_delphi_data", args.delphi_out or f"{cfg.train.out_dir}_delphi_code")
     elif args.command == "baseline":
         from modlehr.evaluate.baselines import run_baselines
@@ -194,7 +192,7 @@ def main(argv: list[str] | None = None) -> None:
         for gap in (float(g) for g in args.gap_days.split(",") if g.strip()):
             suffix = "" if args.query == "event" else f"_{args.query}"
             out = Path(args.out_dir or cfg.train.out_dir) / f"evaluate_delphi_gap{gap:g}d{suffix}.csv"
-            delphi_auc(cfg, checkpoint, gap, out, seed=cfg.train.seed, delphi_repo=args.delphi_repo,
+            delphi_auc(cfg, checkpoint, gap, out, seed=cfg.train.seed,
                        points_dir=args.points_dir, query=args.query, targets_file=args.targets)
     elif args.command == "simulate":
         from modlehr.generate.simulate import simulate

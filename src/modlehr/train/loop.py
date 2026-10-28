@@ -87,8 +87,11 @@ def train(cfg: Config, log=print, resume: bool = False, stop_after: int | None =
     """Train, and return the path of the best checkpoint.
 
     resume continues from <out_dir>/last.pt. stop_after ends the run after that step (last.pt is
-    saved there), for runs split over several jobs.
+    saved there), for runs split over several jobs. model.architecture: delphi2m trains Delphi-2M instead.
     """
+    if cfg.model.architecture == "delphi2m":
+        from modlehr.train.delphi import train_delphi
+        return train_delphi(cfg, log, resume, stop_after)
     prepared = Path(cfg.data.prepared_dir)
     out_dir = Path(cfg.train.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)

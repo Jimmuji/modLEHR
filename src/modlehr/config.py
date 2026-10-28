@@ -83,6 +83,9 @@ class DataConfig:
 
 @dataclass
 class ModelConfig:
+    # modlehr: the GPT assembled from the registered parts below. delphi2m: Delphi-2M's own model and training
+    # (modlehr.model.delphi, modlehr.train.delphi) at this size; the parts below are then not used.
+    architecture: str = "modlehr"
     d_model: int = 128
     n_layers: int = 6
     n_heads: int = 4
@@ -209,7 +212,8 @@ def _rule(raw: Any) -> EventRule:
 
 # Values checked when a config is loaded, so a typo fails before any work is done rather than at the
 # stage that reads it (a misspelt evaluate.risk would otherwise fail after training).
-CHOICES = {("data", "value_mode"): ("continuous", "binned", "none"), ("data", "follow_up_from"): ("first_event", "first_contact"),
+CHOICES = {("model", "architecture"): ("modlehr", "delphi2m"),
+           ("data", "value_mode"): ("continuous", "binned", "none"), ("data", "follow_up_from"): ("first_event", "first_contact"),
            ("train", "precision"): ("fp32", "bf16"),
            ("evaluate", "controls"): ("at_risk", "never"), ("evaluate", "risk"): ("marginal", "next_event")}
 

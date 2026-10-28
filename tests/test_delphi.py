@@ -1,9 +1,14 @@
-"""Delphi-2M's own code on modLEHR's data: the export to its format, and scoring its checkpoints."""
+"""Delphi-2M in modLEHR: its export to Delphi's format, training it, scoring its checkpoints, and the
+check that it trains the same model as Delphi's own code."""
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import math
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -11,45 +16,19 @@ import pytest
 import torch
 
 from modlehr.evaluate.run import evaluate
-from modlehr.external.delphi import FEMALE, LIFESTYLE, MALE, NO_EVENT, delphi_ids, export
+from modlehr.model.delphi import FEMALE, LIFESTYLE, MALE, NO_EVENT, DelphiModel, delphi_ids
 from modlehr.prepare.dataset import open_split
 from modlehr.prepare.pipeline import run_prepare
 from modlehr.prepare.vocabulary import Vocabulary
+from modlehr.train.delphi import export
+from modlehr.train.loop import train
 
 QUIET = lambda *_: None  # noqa: E731
 
-# A stand-in for Delphi's model.py with the same interface: Delphi(DelphiConfig(**model_args)),
-# forward(idx, age) -> (logits, loss, attention). Token v gets the rate 0.001 * v per year (logits are
-# per day, as Delphi's are), and every input is recorded so the test can check what it was given.
-STAND_IN = '''
-import math
-from dataclasses import dataclass, field
-import torch
-import torch.nn as nn
 
-SEEN = []
-
-@dataclass
-class DelphiConfig:
-    block_size: int = 64
-    vocab_size: int = 10
-    n_layer: int = 1
-    n_head: int = 1
-    n_embd: int = 4
-    ignore_tokens: list = field(default_factory=lambda: [0])
-
-class Delphi(nn.Module):
-    def __init__(self, config):
-        super().__init__()
-        self.config = config
-        self.scale = nn.Parameter(torch.ones(()))
-
-    def forward(self, idx, age, targets=None, targets_age=None):
-        SEEN.append((idx.clone(), age.clone()))
-        v = torch.arange(self.config.vocab_size, dtype=torch.float32).clamp(min=1)
-        logits = (torch.log(0.001 * v) - math.log(365.25)) * self.scale
-        return logits.expand(*idx.shape, -1), None, None
-'''
+def _delphi_config(cfg):
+    """The tiny config with Delphi-2M as the model (it reads tokens only)."""
+    return dataclasses.replace(cfg, model=dataclasses.replace(cfg.model, architecture="delphi2m", value_encoding="none"))
 
 
 def _rows(path: Path) -> np.ndarray:
@@ -110,37 +89,32 @@ def test_export_ends_each_record_at_the_end_of_follow_up(tmp_path):
     assert all(rows[rows[:, 0] == p][-1, 2] != NO_EVENT for p in range(1, 30))  # followed to their last event
 
 
-def _stand_in_checkpoint(tmp_path: Path, vocab: Vocabulary) -> tuple[Path, Path]:
-    repo = tmp_path / "delphi_repo"
-    repo.mkdir()
-    (repo / "model.py").write_text(STAND_IN)
-    n = int(delphi_ids(vocab).max()) + 2
-    state = {"model": {"scale": torch.ones(())}, "model_args": {"block_size": 64, "vocab_size": n}}
-    torch.save(state, tmp_path / "ckpt.pt")
-    return repo, tmp_path / "ckpt.pt"
-
-
-def test_a_delphi_checkpoint_is_scored_like_a_modlehr_model(tiny_config, tmp_path):
-    """Rates come back per year for the modLEHR targets, and each landmark is asked with a "no event"
-    token at the landmark age, after the history."""
+def test_delphi2m_trains_and_is_scored_like_a_modlehr_model(tiny_config, tmp_path):
+    """model.architecture: delphi2m trains Delphi-2M on the prepared data; its checkpoint is read as log-rates
+    per year of the modLEHR targets, and each landmark is asked with a "no event" token at the landmark age."""
     from modlehr.evaluate.run import landmark_outputs, load_model
     from modlehr.evaluate.task import landmark_task
 
-    run_prepare(tiny_config.data, log=QUIET)
-    prepared = Path(tiny_config.data.prepared_dir)
+    cfg = _delphi_config(tiny_config)
+    run_prepare(cfg.data, log=QUIET)
+    checkpoint = train(cfg, log=QUIET)
+    records = [json.loads(line) for line in (Path(cfg.train.out_dir) / "log.jsonl").read_text().splitlines()]
+    assert [r["step"] for r in records] == [10, 20, 30] and all(math.isfinite(r["tune_loss"]) for r in records)
+
+    prepared = Path(cfg.data.prepared_dir)
     vocab = Vocabulary.load(prepared / "vocab.json")
-    repo, checkpoint = _stand_in_checkpoint(tmp_path, vocab)
-    with pytest.raises(ValueError, match="--delphi-repo"):
-        load_model(checkpoint, prepared, "cpu")
-
-    model, _ = load_model(checkpoint, prepared, "cpu", repo)
+    model, _ = load_model(checkpoint, prepared, "cpu")
+    assert isinstance(model, DelphiModel)
     ids = delphi_ids(vocab)
-    rates = model({"tokens": torch.tensor([[vocab.token_index["GENDER//F"]]]), "ages": torch.zeros(1, 1)}).exp()[0, 0].detach()
-    expected = 0.001 * (ids[vocab.target_to_input] + 1)  # the stand-in's rate for Delphi id i is 0.001 (i + 1) a year
-    np.testing.assert_allclose(rates.numpy(), expected, rtol=1e-5)
+    batch = {"tokens": torch.tensor([[vocab.token_index["GENDER//F"]]]), "ages": torch.zeros(1, 1)}
+    with torch.no_grad():
+        logits = model.delphi(torch.tensor([[FEMALE + 1]]), torch.zeros(1, 1))[0]
+        expected = logits[0, 0, ids[vocab.target_to_input] + 1] + math.log(365.25)  # per day → per year
+        np.testing.assert_allclose(model(batch)[0, 0].numpy(), expected.numpy(), rtol=1e-6)
 
-    seen = type(model.delphi).forward.__globals__["SEEN"]
-    seen.clear()
+    seen = []
+    forward = model.delphi.forward
+    model.delphi.forward = lambda idx, age, *a, **k: seen.append((idx.clone(), age.clone())) or forward(idx, age, *a, **k)
     split = open_split(prepared, "held_out")
     landmark_outputs(model, split, landmark_task(split, vocab, 60.0, 10.0).subjects, 60.0, 256, "cpu")
     idx, age = seen[0]
@@ -149,15 +123,14 @@ def test_a_delphi_checkpoint_is_scored_like_a_modlehr_model(tiny_config, tmp_pat
     assert torch.all(idx[rows, last] == NO_EVENT + 1) and torch.allclose(age[rows, last], torch.tensor(60.0 * 365.25))
     assert math.isclose(float(age[idx == 0].max()), -10000.0)  # padding at Delphi's padding age
 
-    evaluate(tiny_config, checkpoint, log=QUIET, delphi_repo=repo)
-    summary = json.loads((Path(tiny_config.train.out_dir) / "evaluate.json").read_text())
+    evaluate(cfg, checkpoint, log=QUIET)
+    summary = json.loads((Path(cfg.train.out_dir) / "evaluate.json").read_text())
     assert summary["pairs"] > 0 and "calibration" in summary and "likelihood" in summary
 
     # Delphi-2M's AUC with --query gap asks at a "no event" token after each point's history
     from modlehr.evaluate.delphi import delphi_auc, log_rates_with_query
 
-    delphi_auc(tiny_config, checkpoint, 0.1, tmp_path / "gap.csv", log=QUIET, delphi_repo=repo,
-               points_dir=tmp_path / "points", query="gap")
+    delphi_auc(cfg, checkpoint, 0.1, tmp_path / "gap.csv", log=QUIET, points_dir=tmp_path / "points", query="gap")
     assert json.loads((tmp_path / "gap.json").read_text())["query"] == "gap"
     seen.clear()
     log_rates_with_query(model, split, np.array([[0, 1, 55.0], [1, 2, 61.5]]), 8, "cpu")
@@ -166,3 +139,23 @@ def test_a_delphi_checkpoint_is_scored_like_a_modlehr_model(tiny_config, tmp_pat
     rows = torch.arange(len(idx))
     assert torch.all(idx[rows, last] == NO_EVENT + 1)
     assert torch.allclose(age[rows, last], torch.tensor([55.0, 61.5]) * 365.25)
+
+
+DELPHI_REPO = Path(os.environ.get("DELPHI_REPO", Path(__file__).resolve().parents[1] / ".cache" / "delphi"))
+
+
+@pytest.mark.skipif(not (DELPHI_REPO / "train.py").exists(),
+                    reason="needs a clone of Delphi-2M's code (scripts/compare_delphi_code.sh makes one, or set DELPHI_REPO)")
+def test_delphi2m_trains_the_same_model_as_delphis_own_code(tiny_config, tmp_path):
+    """With the same data and seed, modLEHR's Delphi-2M and Delphi's own train.py end with the same weights."""
+    cfg = _delphi_config(tiny_config)
+    cfg = dataclasses.replace(cfg, model=dataclasses.replace(cfg.model, dropout=0.1))  # dropout draws must match too
+    run_prepare(cfg.data, log=QUIET)
+    export(cfg, tmp_path / "export", tmp_path / "theirs", log=QUIET)
+    subprocess.run([sys.executable, "train.py", str(tmp_path / "export" / "delphi_config.py"), "--device=cpu",
+                    "--log_interval=1000"], cwd=DELPHI_REPO, check=True, capture_output=True)
+    ours = torch.load(train(cfg, log=QUIET), weights_only=False)
+    theirs = torch.load(tmp_path / "theirs" / "ckpt.pt", weights_only=False)
+    assert ours["iter_num"] == theirs["iter_num"] and ours["model_args"] == theirs["model_args"]
+    for key, value in theirs["model"].items():
+        assert torch.equal(ours["model"][key], value), key

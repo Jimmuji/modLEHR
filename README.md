@@ -10,9 +10,10 @@ same patients with the same evaluation.
 
 - **Data.** Converters for Synthea, MIMIC-IV (its diagnosis tables, or the full release through the
   official ETL) and MIMIC-IV-Note, and a toy dataset that runs every command in a minute.
-- **Model.** A GPT over events, with the patient's age in place of position and a rate per year for
-  every outcome (the head of Delphi-2M, Shmatko et al., *Nature* 2025). Attention, normalization,
-  feed-forward, value and text encodings are swappable by name.
+- **Models.** A GPT over events, with the patient's age in place of position and a rate per year for
+  every outcome. Attention, normalization, feed-forward, value and text encodings are swappable by name.
+  Delphi-2M (Shmatko et al., *Nature* 2025) is included as a model of its own (`model.architecture:
+  delphi2m`), checked to train the same model as its authors' code.
 - **Evaluation.** AUC at landmark ages, calibration, likelihood and Delphi-2M's own AUC, with logistic
   regression and gradient boosting on exactly the same task. `modlehr compare` gives paired
   differences with intervals over seeds.
@@ -114,6 +115,7 @@ What each one reads and writes: [docs/pipeline.md](docs/pipeline.md).
 | `value_encoding` | `none`, `mlp` |
 | `text_encoding` | `none`, `hashed_bag` |
 | `head` | `competing_risk` |
+| `architecture` | `modlehr` (the parts above), `delphi2m` (Delphi-2M's own model and training) |
 | `target_grouping` | `identity`, `icd10_3char`, `icd_3char`, `icd_gems`, `phecode` |
 
 How each works: [docs/model.md](docs/model.md). Adding your own: [docs/extending.md](docs/extending.md).
@@ -240,7 +242,7 @@ tables, calibration and the Synthea results: [docs/results.md](docs/results.md).
 | [docs/configuration.md](docs/configuration.md) | Every config key and its default |
 | [docs/disease_codes.md](docs/disease_codes.md) | Disease codes and how they become prediction targets |
 | [docs/extending.md](docs/extending.md) | Adding a model part or a data source |
-| [docs/delphi.md](docs/delphi.md) | modLEHR and Delphi-2M: what they share and how to run Delphi-2M's code on the same data |
+| [docs/delphi.md](docs/delphi.md) | Delphi-2M in modLEHR: training it, how it differs from the GPT, and its authors' code on the same data |
 | [docs/results.md](docs/results.md) | Full results |
 | [docs/design.md](docs/design.md) | Design notes |
 | [docs/troubleshooting.md](docs/troubleshooting.md) | Common problems |
@@ -256,10 +258,9 @@ configs/
 src/modlehr/
   data/            MEDS reader and validation; adapters/ convert sources to MEDS; toy.py
   prepare/         event selection, target grouping, vocabularies, values, labels, batches
-  model/           input head, swappable layers, output heads, the assembled model
-  train/           training loop
+  model/           input head, swappable layers, output heads, the assembled model; delphi.py, Delphi-2M
+  train/           training loop; delphi.py, Delphi-2M's training and data format
   evaluate/        landmark task, AUC, calibration, likelihood, baselines, Delphi-2M's AUC, comparison
-  external/        Delphi-2M's own code on modLEHR data
   generate/        sampling futures
   registry.py      name → part, for everything that can be swapped
   config.py        configuration and command-line overrides

@@ -1,0 +1,6 @@
+# Delphi-2M on MIMIC-IV diagnoses: the plain GPT's data, size, schedule and evaluation, with Delphi-2M's
+# own model and training. With the same seed it trains the same model as Delphi's own code on
+# `modlehr export-delphi` of this data, so it is checked against that.
+defaults: [mimic_iv_core_gpt.yaml, ../model/delphi2m.yaml]
+train:
+  out_dir: runs/mimic_iv_core_delphi

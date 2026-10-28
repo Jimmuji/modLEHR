@@ -249,15 +249,15 @@ in the reported mean AUC, the model's lead over logistic regression on the same 
 `scripts/analysis/by_chapter.py` splits a model's lead over a baseline by ICD-10 chapter, landmark age
 and number of cases.
 
-### Delphi-2M's own code on the same data
+### Delphi-2M
 
 ```bash
-scripts/compare_delphi_code.sh --set model.text_encoding=none     # toy data, CPU, about a minute
-CONFIG=configs/experiment/mimic_iv_core_gpt.yaml DEVICE=cuda scripts/compare_delphi_code.sh --seed 1
+modlehr run --config configs/experiment/mimic_iv_core_delphi.yaml --seed 1      # Delphi-2M on the same data
+scripts/compare_delphi_code.sh --set model.text_encoding=none                   # against Delphi's own code, toy data
 ```
 
-The script clones Delphi-2M's code at a fixed commit into `external/delphi`, trains modLEHR, writes
-the same prepared data in Delphi's format (`modlehr export-delphi`, with a config of the same size and
-schedule), trains Delphi's `train.py` on it, scores its checkpoint with `modlehr evaluate` and
-`modlehr delphi` (`--delphi-repo`), and compares the two. What the two models share, where they
-differ, and how one format maps to the other: [docs/delphi.md](delphi.md).
+`model.architecture: delphi2m` trains Delphi-2M's own model and training in place of the GPT, at the
+experiment's size and schedule, and its checkpoint is scored like any other.
+`scripts/compare_delphi_code.sh` also runs Delphi's own code on the same prepared data
+(`modlehr export-delphi`) and compares the three. What Delphi-2M shares with the plain GPT, where they
+differ, and how one format maps to the other: [delphi.md](delphi.md).

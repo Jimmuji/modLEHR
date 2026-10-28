@@ -1,0 +1,7 @@
+# Delphi-2M on the toy dataset, at the toy GPT's size and schedule. Delphi reads no note words, so the
+# toy diseases, which only the notes predict, score at chance: this checks that everything runs.
+defaults: [toy_gpt.yaml, ../model/delphi2m.yaml]
+model:
+  text_encoding: none
+train:
+  out_dir: runs/toy_delphi

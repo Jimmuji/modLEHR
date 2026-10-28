@@ -46,7 +46,7 @@ from sklearn.metrics import roc_auc_score
 
 from modlehr.config import Config, ModelConfig
 from modlehr.evaluate.task import history_before, landmark_task, split_first_ages, summarize
-from modlehr.external.delphi import DelphiModel, is_delphi_checkpoint
+from modlehr.model.delphi import DelphiModel, is_delphi_checkpoint
 from modlehr.model.model import ModLEHR
 from modlehr.prepare.dataset import PreparedSplit, collate, open_split
 from modlehr.prepare.vocabulary import NO_EVENT, Vocabulary
@@ -54,16 +54,12 @@ from modlehr.track import Tracker
 from modlehr.train.loop import pick_device, to_device
 
 
-def load_model(checkpoint: str | Path, prepared_dir: Path, device: torch.device,
-               delphi_repo: str | Path | None = None) -> tuple[ModLEHR, Vocabulary]:
-    """A modLEHR checkpoint, or one of Delphi-2M's train.py (with delphi_repo, a clone of its code)."""
+def load_model(checkpoint: str | Path, prepared_dir: Path, device: torch.device) -> tuple[ModLEHR, Vocabulary]:
+    """A modLEHR checkpoint, or a Delphi-2M one (model.architecture: delphi2m, or Delphi's own train.py)."""
     state = torch.load(checkpoint, map_location="cpu", weights_only=False)
     vocab = Vocabulary.load(prepared_dir / "vocab.json")
     if is_delphi_checkpoint(state):
-        if delphi_repo is None:
-            raise ValueError(f"{checkpoint} is a checkpoint of Delphi-2M's own code; pass --delphi-repo, the clone "
-                             "of github.com/gerstung-lab/Delphi it was trained with")
-        return DelphiModel(delphi_repo, state, vocab).to(device).eval(), vocab
+        return DelphiModel(state, vocab).to(device).eval(), vocab
     meta = json.loads((Path(prepared_dir) / "prepare.json").read_text())
     model = ModLEHR(ModelConfig(**state["model_config"]), n_tokens=len(vocab.tokens), n_targets=len(vocab.targets),
                     n_text_buckets=meta.get("text_buckets", 0))
@@ -193,11 +189,10 @@ def recalibration_shift(model: ModLEHR, split: PreparedSplit, vocab: Vocabulary,
     return (lo + hi) / 2
 
 
-def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = None, log=print,
-             delphi_repo: str | Path | None = None) -> pd.DataFrame:
+def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = None, log=print) -> pd.DataFrame:
     prepared = Path(cfg.data.prepared_dir)
     device = pick_device(cfg.train.device)
-    model, vocab = load_model(checkpoint, prepared, device, delphi_repo)
+    model, vocab = load_model(checkpoint, prepared, device)
     split = open_split(prepared, cfg.evaluate.split)
     first = split_first_ages(split, vocab)
     H, min_cases = cfg.evaluate.horizon_years, cfg.evaluate.min_cases

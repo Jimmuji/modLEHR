@@ -1,13 +1,40 @@
-# modLEHR and Delphi-2M
+# Delphi-2M in modLEHR
 
 Delphi-2M (Shmatko et al., *Nature* 2025; code at
 [github.com/gerstung-lab/Delphi](https://github.com/gerstung-lab/Delphi)) is a GPT trained on the
 disease histories of 400,000 UK Biobank participants that predicts the rate of over 1,000 diseases
-and death. It is a reference point for modLEHR, not its template: modLEHR scores any model with
-Delphi-2M's AUC, and can run Delphi-2M's own code on a prepared dataset, so the two can be compared
-on identical subjects, events and splits.
+and death. modLEHR includes it as a model of its own, so it trains and is scored on any prepared
+dataset like every other model, and it scores any model with Delphi-2M's AUC.
 
-## What is the same
+## Training Delphi-2M
+
+```bash
+modlehr run --config configs/experiment/mimic_iv_core_delphi.yaml --seed 1
+modlehr compare runs/mimic_iv_core_gpt_s1 runs/mimic_iv_core_delphi_s1
+```
+
+`model.architecture: delphi2m` (`configs/model/delphi2m.yaml`, layered onto any experiment) replaces the
+GPT assembled from parts with Delphi-2M's model and training, at the experiment's size (`d_model`,
+`n_layers`, `n_heads`, `max_len`, `dropout`) and schedule (`train.*`):
+
+- `modlehr.model.delphi`: the model, a port of Delphi's `model.py` with the same modules, parameter
+  names and initialization, so a checkpoint of either loads into the other.
+- `modlehr.train.delphi`: Delphi's batches, losses, tuning loss, checkpoint rule, learning-rate schedule
+  and optimizer, a port of its `train.py` that makes its random draws in the same order. Delphi-2M's own
+  choices are kept: a time floor of 0.1 day, tie masking, "no event" tokens every five years on average.
+
+It is checked against Delphi's own code: given the same prepared data (through `modlehr export-delphi`,
+below) and seed, the two end with the same weights on a CPU, parameter for parameter
+(`tests/test_delphi.py`, run when a clone of Delphi's code is in `.cache/delphi` or `DELPHI_REPO`).
+
+
+Its checkpoints are scored like a modLEHR model's: the log-rates per day of the modLEHR targets are
+turned into rates per year, and at a landmark a "no event" token at the landmark age is appended to the
+history, which is how Delphi is asked about a time with no event.
+
+## Delphi-2M and modLEHR's plain GPT
+
+### What is the same
 
 | | Delphi-2M | modLEHR's plain GPT |
 |---|---|---|
@@ -19,7 +46,7 @@ on identical subjects, events and splits.
 | Sampling | Each token's wait drawn from its rate, the first one taken | `modlehr generate`: one wait from the total rate and the target in proportion to its rate, the same distribution |
 | Delphi-2M's AUC | `evaluate_auc_pipeline` in `evaluate_auc.py` | `modlehr delphi`, the same definition, checked against that code |
 
-## What differs
+### What differs
 
 | | Delphi-2M | modLEHR |
 |---|---|---|
@@ -34,7 +61,7 @@ on identical subjects, events and splits.
 | Time floor | `t_min`: 0.1 day added to every wait | None |
 | Main evaluation | AUC by sex and 5-year age band against patients who never have the disease | AUC at landmark ages against patients followed past the window (or `controls: never`), calibration, held-out likelihood |
 
-The landmark AUC and calibration (see the README) are modLEHR's main task; `modlehr delphi` is
+The landmark AUC and calibration ([pipeline.md](pipeline.md)) are modLEHR's main task; `modlehr delphi` is
 there to set a model next to Delphi-2M's published numbers, 0.76 (women) and 0.75 (men) on UK
 Biobank with a gap of 0.1 day. Those numbers come from a cohort with self-reported history and
 registry follow-up; MIMIC-IV is one hospital's admissions, whose records start at the first stay and
@@ -63,22 +90,21 @@ diseases both predict.
 
 ## Delphi-2M's own code on modLEHR's data
 
+`modlehr export-delphi` writes a prepared dataset in Delphi's format, so its own `train.py` trains on the
+same subjects, events and splits, and its checkpoint is scored by `modlehr evaluate` and `modlehr delphi`
+as is. `scripts/compare_delphi_code.sh` runs the plain GPT, modLEHR's Delphi-2M and Delphi's own code on
+the same data and compares the three:
+
 ```bash
-scripts/compare_delphi_code.sh                                # the toy data, on a CPU, in a minute
+scripts/compare_delphi_code.sh --set model.text_encoding=none          # the toy data, on a CPU, in a minute
 CONFIG=configs/experiment/mimic_iv_core_gpt.yaml DEVICE=cuda scripts/compare_delphi_code.sh --seed 1
 ```
 
-The script clones Delphi-2M's code at a fixed commit into `external/delphi`, then:
-
-1. `modlehr run` prepares the data, trains modLEHR and scores it; `modlehr delphi` adds Delphi-2M's AUC.
-2. `modlehr export-delphi` writes the prepared data in Delphi's format to `<train.out_dir>_delphi_data`:
-   `train.bin`, `val.bin` and `test.bin` (the train, tuning and evaluation splits), `labels.csv`,
-   `mapping.json`, and `delphi_config.py`, a config for Delphi's `train.py` with this vocabulary and
-   the size and schedule of the modLEHR run (layers, heads, width, window, batch, steps, learning
-   rates), keeping Delphi's own time floor, "no event" rate and tie masking.
-3. Delphi's `train.py` trains on it and writes its checkpoint to `<train.out_dir>_delphi_code`.
-4. `modlehr evaluate` and `modlehr delphi`, given that checkpoint and `--delphi-repo`, score it with
-   the same code as the modLEHR model; `modlehr compare` sets the two side by side.
+The script clones Delphi-2M's code at a fixed commit into `.cache/delphi`. The export, in
+`<train.out_dir>_delphi_data`: `train.bin`, `val.bin` and `test.bin` (the train, tuning and evaluation
+splits), `labels.csv`, `mapping.json`, and `delphi_config.py`, a config for Delphi's `train.py` with this
+vocabulary and the size and schedule of the modLEHR run, keeping Delphi's own time floor, "no event" rate
+and tie masking.
 
 How the export maps one format to the other:
 
@@ -92,12 +118,6 @@ How the export maps one format to the other:
 - Numbers and note words do not reach Delphi; a measurement enters as its token. For a like-for-like
   comparison, use binned values or none, and `--set model.text_encoding=none`.
 
-How a Delphi checkpoint is scored: its log-rates per day for the modLEHR targets are turned into
-rates per year, and every part of the evaluation reads them as it reads a modLEHR model's. At a
-landmark, a "no event" token at the landmark age is appended to the history, which is how Delphi is
-asked about a time with no event. Delphi's forward pass also returns every layer's attention
-weights, so batches are split to keep those under about 1 GB.
-
-On the toy data both models score at chance once the notes are left out (the toy diseases are drawn
+On the toy data every model scores at chance once the notes are left out (the toy diseases are drawn
 independently of everything but the notes), which is what the toy data is for: checking that the
-two pipelines run on the same data and are scored the same way.
+pipelines run on the same data and are scored the same way.

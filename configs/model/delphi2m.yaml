@@ -1,0 +1,8 @@
+# Delphi-2M's own model and training (Shmatko et al., Nature 2025; modlehr.model.delphi and
+# modlehr.train.delphi): GPT-2 blocks over tokens with a sinusoidal age encoding, a log-rate per day for
+# every token, next-token and waiting-time losses, its own "no event" tokens, tie masking and a time floor
+# of 0.1 day. Size and schedule come from the experiment (d_model, n_layers, n_heads, max_len, dropout,
+# train.*); the swappable parts of gpt_baseline.yaml are not used. Layer it onto an experiment, e.g.
+# defaults: [mimic_iv_core_gpt.yaml, ../model/delphi2m.yaml].
+model:
+  architecture: delphi2m

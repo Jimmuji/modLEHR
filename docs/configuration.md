@@ -116,6 +116,7 @@ the `description_regex` keeps only disorders as targets.
 
 | Key | Default | Meaning |
 |---|---|---|
+| `architecture` | `modlehr` | `modlehr`: the GPT assembled from the parts below. `delphi2m`: Delphi-2M's own model and training at this size (`d_model`, `n_layers`, `n_heads`, `max_len`, `dropout`), reading tokens only; the other keys here are not used, and it needs `data.no_event_years: null`, `train.precision: fp32` and `train.grad_accum: 1`. See [delphi.md](delphi.md) |
 | `d_model` | `128` | Width of every event embedding and layer |
 | `n_layers` | `6` | Transformer blocks |
 | `n_heads` | `4` | Attention heads; `d_model` must divide by it |

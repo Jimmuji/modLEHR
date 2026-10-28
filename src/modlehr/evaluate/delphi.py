@@ -238,7 +238,7 @@ QUERIES = ("event", "gap")
 
 
 def delphi_auc(cfg: Config, checkpoint: str | Path, gap_days: float, out_csv: str | Path | None = None,
-               seed: int = 0, log=print, delphi_repo: str | Path | None = None,
+               seed: int = 0, log=print,
                points_dir: str | Path | None = None, query: str = "event",
                targets_file: str | Path | None = None) -> pd.DataFrame:
     """Delphi-2M's AUC for one checkpoint and gap. points_dir shares one set of prediction points between
@@ -257,7 +257,7 @@ def delphi_auc(cfg: Config, checkpoint: str | Path, gap_days: float, out_csv: st
         raise ValueError(f"query must be one of {QUERIES}, not {query!r}")
     prepared = Path(cfg.data.prepared_dir)
     device = pick_device(cfg.train.device)
-    model, vocab = load_model(checkpoint, prepared, device, delphi_repo)
+    model, vocab = load_model(checkpoint, prepared, device)
     if query == "gap" and getattr(model, "query_token", None) is None:
         raise ValueError("query=gap needs a model with a \"no event\" token: one trained with data.no_event_years, "
                          "or a checkpoint of Delphi-2M's own code")

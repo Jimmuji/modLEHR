@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+Delphi-2M as a modLEHR model
+- `model.architecture: delphi2m` (configs/model/delphi2m.yaml) trains Delphi-2M's own model and training on
+  any prepared dataset, at the experiment's size and schedule: `modlehr.model.delphi` ports its `model.py`
+  (same modules, parameter names and initialization) and `modlehr.train.delphi` its `train.py` (batches,
+  losses, tuning loss, checkpoint rule, schedule, optimizer, random draws in the same order). With the same
+  data and seed it ends with the same weights as Delphi's own code on a CPU (tests/test_delphi.py)
+- Its checkpoints, and those of Delphi's own `train.py`, are scored without a clone of Delphi's code;
+  `--delphi-repo` and `modlehr.external` are gone. `modlehr export-delphi` stays, for running Delphi's own
+  code on the same data; `scripts/compare_delphi_code.sh` compares the plain GPT, modLEHR's Delphi-2M and
+  Delphi's own code (configs/experiment/mimic_iv_core_delphi.yaml, toy_delphi.yaml)
+
 What moves the results
 - `train.patience` stops a run after that many tuning checks without a new best; the stopped run is the
   start of the full run (same schedule), and `--resume` on it trains no further. On the October 19 MIMIC-IV

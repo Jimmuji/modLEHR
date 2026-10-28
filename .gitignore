@@ -9,5 +9,6 @@ __pycache__/
 /logs/
 /*.out
 /external/
+/.cache/
 /scripts/fir/
 /scripts/push_mimic_to_fir.sh
