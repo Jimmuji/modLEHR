@@ -9,7 +9,8 @@ same patients with the same evaluation.
 ![modLEHR pipeline: any source to MEDS, then prepare, train and evaluate](docs/figures/overview.png)
 
 - **Data.** Converters for Synthea, MIMIC-IV (its diagnosis tables, or the full release through the
-  official ETL) and MIMIC-IV-Note, and a toy dataset that runs every command in a minute.
+  official ETL) and MIMIC-IV-Note, a toy dataset that runs every command in a minute, and Synthea
+  patients ready to download.
 - **Models.** A GPT over events, with the patient's age in place of position and a rate per year for
   every outcome. Attention, normalization, feed-forward, value and text encodings are swappable by name.
   Delphi-2M (Shmatko et al., *Nature* 2025) is included as a model of its own (`model.architecture:
@@ -123,15 +124,29 @@ How each works: [docs/model.md](docs/model.md). Adding your own: [docs/extending
 </details>
 
 <details>
-<summary><b>Quick start on Synthea</b> (synthetic patients, from generation to sampled futures)</summary>
+<summary><b>Quick start on Synthea</b> (synthetic patients, from download to sampled futures)</summary>
 
 [Synthea](https://github.com/synthetichealth/synthea) simulates complete patient records from
-published statistics. It is open and free to redistribute. It is not real data, so it checks that
-everything runs; model comparisons belong on real records.
+published statistics; its data are public domain. It is not real data, so it checks that everything
+runs; model comparisons belong on real records.
 
-**1. Generate patients.** Download `synthea-with-dependencies.jar` from the
-[Synthea releases](https://github.com/synthetichealth/synthea/releases) (tested with 3.4.0 on
-Java 11), then:
+**1. Download 22,962 synthetic patients, already in MEDS** (151 MB, from
+[Hugging Face](https://huggingface.co/datasets/Jimmu1215/modlehr-synthea)):
+
+```bash
+pip install huggingface_hub
+hf download Jimmu1215/modlehr-synthea --repo-type dataset --local-dir data/synthea_meds
+```
+
+**2. Check it:**
+
+```console
+$ modlehr validate --meds-dir data/synthea_meds
+data/synthea_meds: 30 shards, 1,229 codes, 22,962 subjects; valid
+```
+
+To generate your own patients instead, Synthea needs Java 11: download `synthea-with-dependencies.jar`
+from the [Synthea releases](https://github.com/synthetichealth/synthea/releases) (tested with 3.4.0), then
 
 ```bash
 java -jar synthea-with-dependencies.jar -p 20000 -s 20260919 \
@@ -139,19 +154,12 @@ java -jar synthea-with-dependencies.jar -p 20000 -s 20260919 \
   --exporter.csv.export true --exporter.fhir.export false \
   --exporter.csv.included_files patients.csv,conditions.csv,observations.csv \
   --exporter.years_of_history 0 --generate.only_alive_patients false
+modlehr convert synthea --raw-dir data/synthea_raw --out data/synthea_meds
 ```
 
 `years_of_history 0` keeps the whole life rather than the last 10 years, and
-`only_alive_patients false` keeps people who die, so death can be predicted.
-
-**2. Convert to MEDS and check it** (74 seconds):
-
-```console
-$ modlehr convert synthea --raw-dir data/synthea_raw --out data/synthea_meds
-{'subjects': 22962, 'events': 47494155, 'codes': 1229}
-$ modlehr validate --meds-dir data/synthea_meds
-data/synthea_meds: 30 shards, 1,229 codes, 22,962 subjects; valid
-```
+`only_alive_patients false` keeps people who die, so death can be predicted. Synthea runs on several
+threads, so the same seed can give a slightly different population.
 
 **3. Prepare timelines** (20 seconds):
 

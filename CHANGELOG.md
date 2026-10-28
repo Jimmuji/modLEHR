@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+Synthea without Java
+- The Synthea patients of the README (22,962, MEDS 0.4.1) are on Hugging Face,
+  huggingface.co/datasets/Jimmu1215/modlehr-synthea (CC0; Synthea's data are public domain). The quick start
+  downloads them; generating with Synthea and Java is the alternative
+
 Delphi-2M as a modLEHR model
 - `model.architecture: delphi2m` (configs/model/delphi2m.yaml) trains Delphi-2M's own model and training on
   any prepared dataset, at the experiment's size and schedule: `modlehr.model.delphi` ports its `model.py`
