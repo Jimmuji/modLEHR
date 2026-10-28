@@ -5,7 +5,6 @@
 #   FILES="hosp/omr.csv.gz" scripts/fetch_mimic_iv.sh        # only these files of the release
 #   RELEASE=mimic-iv-note/2.2 scripts/fetch_mimic_iv.sh     # MIMIC-IV-Note (its own data use agreement)
 #   PARALLEL=6 scripts/fetch_mimic_iv.sh                    # six files at a time
-#   scripts/push_mimic_to_fir.sh                            # meanwhile, move finished files to Fir
 #
 # physionet.org serves each connection at about 50 KB/s (October 2026), so the 10 GB release takes about
 # two days one file at a time; six files at a time reach about 200 KB/s in all.

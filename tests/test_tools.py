@@ -488,7 +488,8 @@ def test_readme_lists_every_command():
 
     commands = next(a for a in build_parser()._actions if isinstance(a, argparse._SubParsersAction)).choices
     readme = (Path(__file__).resolve().parents[1] / "README.md").read_text()
-    table = readme[readme.index("| Command |"):readme.index("## Installation")]
+    start = readme.index("| Command |")
+    table = readme[start:readme.index("</details>", start)]
     assert [c for c in commands if f"`modlehr {c}" not in table] == []
 
 

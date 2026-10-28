@@ -1,14 +1,14 @@
 """How much each choice moves the results on MIMIC-IV diagnoses: model parts against data and evaluation
-settings (the runs of scripts/fir/study.sh). Reads evaluated runs, writes a table and a figure.
+settings (the settings-study runs). Reads evaluated runs, writes a table and a figure.
 
-    python scripts/analysis/settings_study.py runs                       # on Fir, after study.sh
-    python scripts/analysis/settings_study.py runs/fir_v3 --previous runs/fir --out runs/settings_study
+    python scripts/analysis/settings_study.py runs
+    python scripts/analysis/settings_study.py runs --previous runs_before --out runs/settings_study
 
 Every row is one choice changed from the plain GPT (configs/experiment/mimic_iv_core_gpt.yaml), in one
 of four kinds:
 
     model part      a registered part swapped; the landmark tasks are the plain GPT's
-    model size      the plain GPT made smaller or larger (scripts/fir/scaling.sh)
+    model size      the plain GPT made smaller or larger (the scaling runs)
     training data   what the model learns from changes, the tasks do not ("no event" tokens, a share of
                     the training subjects)
     task            who or what is scored changes: where follow-up starts, a washout, when diagnoses are

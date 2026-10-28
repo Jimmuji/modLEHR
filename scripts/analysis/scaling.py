@@ -1,10 +1,10 @@
-"""Model size against training data on MIMIC-IV diagnoses (the runs of scripts/fir/scaling.sh and study.sh):
+"""Model size against training data on MIMIC-IV diagnoses (the scaling and settings-study runs):
 for each size of the plain GPT and each share of the training subjects, mean AUC, held-out negative
 log-likelihood and calibration, over seeds, with logistic regression on the same share. Writes a table and
 a figure.
 
     python scripts/analysis/scaling.py runs
-    python scripts/analysis/scaling.py runs/fir_v4 --out runs/scaling
+    python scripts/analysis/scaling.py runs --out runs/scaling
 
 Whether a larger model or more data helps more is the question: if the curves for larger models rise with
 data and keep apart, the model is limited by data; if they lie on top of each other, by neither.
@@ -107,7 +107,7 @@ def main() -> None:
     t.to_csv(out.with_suffix(".csv"), index=False)
     try:
         figure(t, out.with_suffix(".png"))
-    except ModuleNotFoundError:  # no matplotlib on Fir: draw it where the table is copied to
+    except ModuleNotFoundError:  # no matplotlib on the cluster: draw it where the table is copied to
         print("matplotlib is not installed here; table only")
     print(t.round(4).to_string(index=False))
     print(f"→ {out.with_suffix('.csv')}")

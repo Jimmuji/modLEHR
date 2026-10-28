@@ -8,7 +8,6 @@ What moves the results
   runs, 5 checks would have stopped them at 13,000 to 19,000 of 20,000 steps with the same best.pt, but on
   the October 23 runs it stopped some on an early, noisy low (one at an AUC of 0.53), so the MIMIC-IV
   configs do not use it. A stopped run resumed with `train.patience: null` continues on the same path
-  (scripts/fir/continue_stopped.sh)
 - `train.data_fraction` trains (and `modlehr baseline` fits) on a fixed share of the training subjects,
   nested across shares and the same for every seed, for a learning curve (mimic_iv_core_gpt_frac10/25/50)
 - `data.washout_years` starts follow-up later, so a first stay's diagnoses are history, not new cases
@@ -19,9 +18,9 @@ What moves the results
   (configs/data/mimic_iv_core_admission_time.yaml; the study converts it in its CPU job)
 - `evaluate.recalibrate` scales the rates at each landmark by one factor fit on the tuning split (expected
   new targets = observed); AUCs stay the same, calibration shows what is left beyond the overall level
-- scripts/fir/study.sh: model parts, training data and task settings over seeds, with logistic regression
-  on each task, evaluation settings (horizon 1 and 5 years, next-target score, never-controls;
-  variants.sbatch, not sent to wandb) and gradient boosting (gbm.sbatch)
+- The settings study: model parts, training data and task settings over seeds, with logistic regression
+  on each task, evaluation settings (horizon 1 and 5 years, next-target score, never-controls) and
+  gradient boosting
 - scripts/analysis/settings_study.py: the table and figure of that study; scripts/analysis/by_chapter.py:
   a model's lead over a baseline by ICD-10 chapter, landmark age and number of cases
 
@@ -32,8 +31,6 @@ Delphi-2M's AUC on shared points
 - `--query gap` reads a model with a "no event" token at one placed a gap before each diagnosis
 - `--targets FILE` adds the means over a list of targets; configs/targets/delphi2m.txt lists
   Delphi-2M's 1,254 ICD-10 categories (chapters I to XVII) and death
-- scripts/fir: delphi.sbatch and delphi_code.sbatch score every run on runs/delphi_points/mimic_iv_core;
-  rerun_all.sh adds Delphi-2M's AUC for every run it trains
 
 Delphi-2M's own code on the same data
 - `modlehr export-delphi` writes a prepared dataset in Delphi-2M's format (`train.bin`, `val.bin`,
@@ -61,12 +58,6 @@ Follow-up from the first contact
   `evaluate`, `generate` and `simulate` then ask at one placed at the landmark or start age instead
   of reading the last event before it, often years earlier. Off by default
 
-Fir
-- `scripts/fir/rerun_all.sh` submits, from a login node, everything the review changes call for: the data
-  prepared again with logistic regression, five seeds each of the plain GPT, follow-up from the first
-  contact and "no event" tokens, then `scripts/fir/delphi_code.sbatch`, Delphi-2M's own code against the
-  plain GPT on the same data (Delphi's code is cloned on the login node, since compute nodes have no
-  internet). It stops if `runs/` still holds runs evaluated before the review fixes
 
 Licence
 - The code is under the MIT License (`LICENSE`, and `license` in pyproject.toml)
