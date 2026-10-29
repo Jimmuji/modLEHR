@@ -250,14 +250,16 @@ def _apply_values(frame: pd.DataFrame, cfg: DataConfig, cuts: dict | None) -> pd
 
 def is_current(cfg: DataConfig) -> bool:
     """True if prepared_dir holds a complete prepare run made with this exact data config, from the
-    MEDS files as they are now (a converter run since then rewrites them)."""
+    MEDS files as they are now (a converter run since then rewrites them). Where the prepared data lives
+    is not part of it, so a copy (to a node's local disk, say) is as current as the original."""
     out_dir = Path(cfg.prepared_dir)
     needed = [out_dir / "prepare.json", out_dir / "vocab.json"] + [out_dir / s / "offsets.npy" for s in SPLITS]
     if not all(p.exists() for p in needed):
         return False
     stored = json.loads((out_dir / "prepare.json").read_text())
-    return (stored.get("data_config") == comparable_config(cfg, stored.get("data_config") or {})
-            and stored.get("meds_fingerprint") == meds_fingerprint(cfg.meds_dir))
+    stored_config = {k: v for k, v in (stored.get("data_config") or {}).items() if k != "prepared_dir"}
+    current = {k: v for k, v in comparable_config(cfg, stored.get("data_config") or {}).items() if k != "prepared_dir"}
+    return stored_config == current and stored.get("meds_fingerprint") == meds_fingerprint(cfg.meds_dir)
 
 
 def comparable_config(cfg: DataConfig, stored: dict) -> dict:

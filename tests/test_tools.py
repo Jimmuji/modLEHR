@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import json
 import os
+import shutil
 from pathlib import Path
 
 import numpy as np
@@ -136,6 +137,10 @@ def test_prepare_reports_rules_and_is_current(tiny_config):
     os.utime(shard, ns=(st.st_atime_ns, st.st_mtime_ns))
     assert is_current(tiny_config.data)
     assert any("prediction targets" in line for line in describe(tiny_config.data))
+    copied = copy.deepcopy(tiny_config.data)  # a copy elsewhere (a node's local disk) is just as current
+    copied.prepared_dir = str(Path(tiny_config.data.prepared_dir).parent / "copied")
+    shutil.copytree(tiny_config.data.prepared_dir, copied.prepared_dir)
+    assert is_current(copied)
 
 
 def test_evaluate_baselines_and_compare(tiny_config):
