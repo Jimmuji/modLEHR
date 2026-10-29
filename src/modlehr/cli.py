@@ -13,6 +13,7 @@
     modlehr simulate --config configs/experiment/synthea_gpt.yaml --start-age 50
     modlehr delphi   --config configs/experiment/mimic_iv_core_gpt.yaml --seed 1   (Delphi-2M's own AUC)
     modlehr export-delphi --config configs/experiment/toy_gpt.yaml   (the prepared data in Delphi-2M's format)
+    modlehr delphi-train config/train_delphi.py --device=cuda   (Delphi-2M on data and a config in Delphi's own format)
     modlehr run      --config configs/experiment/synthea_gpt.yaml --seed 2
     modlehr compare  runs/synthea_gpt_s1 runs/synthea_gpt_rope_age_s1 runs/synthea_gpt_logistic
 
@@ -62,6 +63,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     cmp_ = sub.add_parser("compare", help="compare evaluated runs against the first one")
     cmp_.add_argument("runs", nargs="+", help="run directories containing evaluate.csv")
+
+    dtr = sub.add_parser("delphi-train", help="train Delphi-2M on data in Delphi's own format, with a config of its own",
+                         description="Train modLEHR's Delphi-2M the way Delphi's train.py would: its defaults, then a "
+                         "config file of its own, then --key=value settings. Reads train.bin and val.bin from "
+                         "data/<dataset> (or dataset, when it is a path) and writes <out_dir>/ckpt.pt as Delphi does.")
+    dtr.add_argument("delphi_config", nargs="?", help="a config file in Delphi's format, e.g. config/train_delphi.py")
+    dtr.add_argument("settings", nargs=argparse.REMAINDER, metavar="--KEY=VALUE", help="Delphi settings, e.g. --device=cuda")
 
     for name, text in CONFIG_COMMANDS.items():
         p = sub.add_parser(name, help=text)
@@ -152,6 +160,10 @@ def main(argv: list[str] | None = None) -> None:
     if args.command == "compare":
         from modlehr.evaluate.compare import compare, print_comparison
         print_comparison(compare(args.runs))
+        return
+    if args.command == "delphi-train":
+        from modlehr.train.delphi import train_from_delphi_config
+        train_from_delphi_config(args.delphi_config, args.settings)
         return
 
     cfg = load(args)

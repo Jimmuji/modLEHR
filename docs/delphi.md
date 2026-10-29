@@ -34,6 +34,21 @@ Its checkpoints are scored like a modLEHR model's: the log-rates per day of the 
 turned into rates per year, and at a landmark a "no event" token at the landmark age is appended to the
 history, which is how Delphi is asked about a time with no event.
 
+## Data already in Delphi's format (UK Biobank)
+
+Data prepared for Delphi's own code, such as its UK Biobank export, can be trained on as it is, with
+the config file Delphi's code would use:
+
+```bash
+modlehr delphi-train path/to/Delphi/config/train_delphi.py --dataset=/path/to/ukb_real_data --device=cuda --out_dir=runs/ukb_delphi2m
+```
+
+`modlehr delphi-train` reads settings the way Delphi's `train.py` does (its defaults, then the config
+file, then `--key=value` settings), the data from `train.bin` and `val.bin` in `data/<dataset>` (or in
+`dataset` when it is a path), and writes `<out_dir>/ckpt.pt` as Delphi does, so Delphi's own
+evaluation (`evaluate_auc.py`) reads it unchanged. Given the same config and data, it ends with the
+same weights as Delphi's `train.py` on a CPU (`tests/test_delphi.py`).
+
 ## Delphi-2M and modLEHR's plain GPT
 
 ### What is the same

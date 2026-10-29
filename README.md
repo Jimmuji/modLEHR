@@ -97,6 +97,7 @@ modlehr compare runs/synthea_gpt_s1 runs/synthea_gpt_gqa_s1 runs/synthea_gpt_log
 | `modlehr simulate` | Sample one future per held-out patient and compare incidence by age with the records |
 | `modlehr delphi` | Delphi-2M's own AUC, to set a model next to Delphi-2M's published numbers |
 | `modlehr export-delphi` | Write a prepared dataset in Delphi-2M's format, so its own code trains on the same data |
+| `modlehr delphi-train` | Train Delphi-2M on data and a config in Delphi's own format (e.g. its UK Biobank setup), writing the checkpoint as its code does |
 | `modlehr run` | `prepare` (only if needed), `train` and `evaluate` in one command |
 | `modlehr compare` | Mean AUC of several runs and paired differences, with 95% intervals over pairs and seeds |
 

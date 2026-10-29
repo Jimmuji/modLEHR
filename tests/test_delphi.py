@@ -159,3 +159,41 @@ def test_delphi2m_trains_the_same_model_as_delphis_own_code(tiny_config, tmp_pat
     assert ours["iter_num"] == theirs["iter_num"] and ours["model_args"] == theirs["model_args"]
     for key, value in theirs["model"].items():
         assert torch.equal(ours["model"][key], value), key
+
+
+def test_delphi_train_reads_delphis_own_format_and_config(tiny_config, tmp_path):
+    """`modlehr delphi-train` trains on train.bin and val.bin with a config file of Delphi's own, and writes
+    ckpt.pt as Delphi does, which modLEHR's evaluation then reads."""
+    from modlehr.cli import main
+    from modlehr.evaluate.run import load_model
+
+    run_prepare(tiny_config.data, log=QUIET)
+    export(tiny_config, tmp_path / "export", tmp_path / "theirs", log=QUIET)
+    main(["delphi-train", str(tmp_path / "export" / "delphi_config.py"), "--device=cpu", "--max_iters=20",
+          "--eval_interval=10", f"--out_dir={tmp_path / 'ours'}"])
+    state = torch.load(tmp_path / "ours" / "ckpt.pt", weights_only=False)
+    assert state["iter_num"] in (10, 20) and state["model_args"]["mask_ties"] is True
+    model, _ = load_model(tmp_path / "ours" / "ckpt.pt", Path(tiny_config.data.prepared_dir), "cpu")
+    assert isinstance(model, DelphiModel)
+    with pytest.raises(ValueError, match="unknown Delphi setting"):
+        main(["delphi-train", str(tmp_path / "export" / "delphi_config.py"), "--n_layers=2"])
+
+
+@pytest.mark.skipif(not (DELPHI_REPO / "train.py").exists(),
+                    reason="needs a clone of Delphi-2M's code (scripts/compare_delphi_code.sh makes one, or set DELPHI_REPO)")
+def test_delphi_train_matches_delphis_own_train_py(tiny_config, tmp_path):
+    """The same config file and data given to `modlehr delphi-train` and to Delphi's train.py give the same weights."""
+    from modlehr.cli import main
+
+    cfg = dataclasses.replace(tiny_config, model=dataclasses.replace(tiny_config.model, dropout=0.1))
+    run_prepare(cfg.data, log=QUIET)
+    export(cfg, tmp_path / "export", tmp_path / "theirs", log=QUIET)
+    config = str(tmp_path / "export" / "delphi_config.py")
+    subprocess.run([sys.executable, "train.py", config, "--device=cpu", "--log_interval=1000"], cwd=DELPHI_REPO,
+                   check=True, capture_output=True)
+    main(["delphi-train", config, "--device=cpu", f"--out_dir={tmp_path / 'ours'}"])
+    ours = torch.load(tmp_path / "ours" / "ckpt.pt", weights_only=False)
+    theirs = torch.load(tmp_path / "theirs" / "ckpt.pt", weights_only=False)
+    assert ours["iter_num"] == theirs["iter_num"] and ours["model_args"] == theirs["model_args"]
+    for key, value in theirs["model"].items():
+        assert torch.equal(ours["model"][key], value), key

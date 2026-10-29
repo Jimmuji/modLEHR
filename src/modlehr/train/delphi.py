@@ -176,19 +176,117 @@ def get_batch(ix, data, p2i, select="left", padding="regular", block_size=48, de
     return [t.to(device) for t in (x, a, y, b)]
 
 
-def lr_at(it: int, t) -> float:
-    """Delphi's schedule: linear warmup from zero, cosine decay to min_lr at train.steps."""
-    if it < t.warmup:
-        return t.lr * it / t.warmup
-    if it > t.steps:
-        return t.min_lr
-    coeff = 0.5 * (1.0 + math.cos(math.pi * (it - t.warmup) / (t.steps - t.warmup)))
-    return t.min_lr + coeff * (t.lr - t.min_lr)
+# Delphi's train.py defaults; a config file of its own (config/train_delphi.py, or delphi_config.py from
+# `modlehr export-delphi`) and --key=value arguments override them, as its configurator does.
+DELPHI_DEFAULTS = {
+    "out_dir": "out", "eval_interval": 2000, "log_interval": 1, "eval_iters": 200, "eval_only": False,
+    "always_save_checkpoint": False, "init_from": "scratch", "seed": 42, "wandb_log": False, "wandb_project": "delphi",
+    "wandb_run_name": "run", "dataset": "ukb_simulated_data", "gradient_accumulation_steps": 1, "batch_size": 128,
+    "block_size": 24, "n_layer": 6, "n_head": 6, "n_embd": 96, "dropout": 0.2, "bias": False, "vocab_size": 256,
+    "learning_rate": 6e-4, "max_iters": 10000, "weight_decay": 1e-1, "beta1": 0.9, "beta2": 0.95, "grad_clip": 1.0,
+    "decay_lr": True, "warmup_iters": 2000, "lr_decay_iters": 10000, "min_lr": 6e-5, "device": "cpu",
+    "dtype": "float32", "compile": False, "token_dropout": 0.0, "t_min": 0.0, "mask_ties": True,
+    "ignore_tokens": [0], "data_fraction": 1.0, "no_event_token_rate": 5,
+}
+MODEL_ARGS = ("n_layer", "n_head", "n_embd", "block_size", "bias", "vocab_size", "dropout", "token_dropout", "t_min",
+              "mask_ties", "ignore_tokens")
+
+
+def lr_at(it: int, s: dict) -> float:
+    """Delphi's schedule: linear warmup from zero, cosine decay to min_lr at lr_decay_iters."""
+    if not s["decay_lr"]:
+        return s["learning_rate"]
+    if it < s["warmup_iters"]:
+        return s["learning_rate"] * it / s["warmup_iters"]
+    if it > s["lr_decay_iters"]:
+        return s["min_lr"]
+    coeff = 0.5 * (1.0 + math.cos(math.pi * (it - s["warmup_iters"]) / (s["lr_decay_iters"] - s["warmup_iters"])))
+    return s["min_lr"] + coeff * (s["learning_rate"] - s["min_lr"])
+
+
+def fit(train_data: np.ndarray, val_data: np.ndarray, s: dict, out_dir: Path, checkpoint: str, device: torch.device,
+        tracker: Tracker, record: dict, log=print) -> tuple[Path, float]:
+    """Delphi's train.py on rows of (patient, age in days, id), with its settings `s`: returns the checkpoint
+    with the lowest tuning loss, saved as Delphi saves it, and that loss. Runs max_iters + 1 steps."""
+    if (s["gradient_accumulation_steps"] != 1 or s["dtype"] != "float32" or s["compile"] or s["init_from"] != "scratch"
+            or s["eval_only"]):
+        raise ValueError("Delphi-2M trains here with gradient_accumulation_steps=1, dtype float32, no compile, "
+                         "init_from scratch and eval_only False")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    train_p2i, val_p2i = get_p2i(train_data), get_p2i(val_data)
+    if s["data_fraction"] < 1.0:
+        train_p2i = train_p2i[:int(s["data_fraction"] * len(train_p2i))]
+    matmul_precision = torch.get_float32_matmul_precision()
+    torch.manual_seed(s["seed"])
+    torch.set_float32_matmul_precision("high")  # as Delphi's train.py: TF32 matrix products on a GPU
+    args = {k: s[k] for k in MODEL_ARGS}
+    model = Delphi(DelphiConfig(**args)).to(device)
+    opt = model.configure_optimizers(s["weight_decay"], s["learning_rate"], (s["beta1"], s["beta2"]), device.type)
+    log(f"[train] Delphi-2M, {model.get_num_params() / 1e6:.2f}M parameters, {args['vocab_size']:,} Delphi tokens, "
+        f"{len(train_p2i):,} training records, device {device}")
+    block, rate, batch_size = args["block_size"], s["no_event_token_rate"], s["batch_size"]
+
+    @torch.no_grad()
+    def estimate_loss() -> dict:
+        out = {}
+        model.eval()
+        for split, data, p2i in (("train", train_data, train_p2i), ("val", val_data, val_p2i)):
+            losses = torch.zeros(s["eval_iters"], 2)
+            for k in range(s["eval_iters"]):
+                ix = torch.randint(len(p2i), (batch_size,))
+                X, A, Y, B = get_batch(ix, data, p2i, block_size=block, device=device, select="left",
+                                       no_event_token_rate=rate, cut_batch=True)
+                _, loss = model(X, A, Y, B, validation_loss_mode=True)
+                losses[k] = torch.stack([loss["loss_ce"], loss["loss_dt"]])
+            out[split] = losses.mean(0)
+        model.train()
+        return out
+
+    def train_batch(cut_batch: bool = True):
+        ix = torch.randint(len(train_p2i), (batch_size,))
+        return get_batch(ix, train_data, train_p2i, block_size=block, device=device, padding="random",
+                         lifestyle_augmentations=True, select="left", no_event_token_rate=rate, cut_batch=cut_batch)
+
+    X, A, Y, B = train_batch(cut_batch=False)  # Delphi's first batch keeps its padding, so dropout draws match
+    best, t0 = float("inf"), time.time()
+    try:
+        with open(out_dir / "log.jsonl", "w") as logf:
+            for it in range(s["max_iters"] + 1):
+                lr = lr_at(it, s)
+                for group in opt.param_groups:
+                    group["lr"] = lr
+                if it % s["eval_interval"] == 0 and it > 0:
+                    losses = estimate_loss()
+                    tune = losses["val"].sum().item()
+                    entry = {"step": it, "train_loss": losses["train"].sum().item(), "tune_loss": tune,
+                             "loss_ce": losses["val"][0].item(), "loss_dt": losses["val"][1].item(),
+                             "seconds": round(time.time() - t0, 1)}
+                    logf.write(json.dumps(entry) + "\n")
+                    logf.flush()
+                    log(f"[train] step {it:6d}  train {entry['train_loss']:.4f}  tune {tune:.4f}  ({entry['seconds']}s)")
+                    tracker.log({**{k: v for k, v in entry.items() if k not in ("step", "seconds")}, "lr": lr}, it)
+                    if s["always_save_checkpoint"] or tune < best:
+                        torch.save({"model": model.state_dict(), "optimizer": opt.state_dict(), "model_args": args,
+                                    "iter_num": it, "best_val_loss": tune, "config": record},
+                                   out_dir / checkpoint)
+                    best = min(best, tune)
+                _, loss = model(X, A, Y, B)
+                X, A, Y, B = train_batch()
+                loss = loss["loss_ce"] + loss["loss_dt"]
+                loss.backward()
+                if s["grad_clip"]:
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), s["grad_clip"])
+                opt.step()
+                opt.zero_grad(set_to_none=True)
+    finally:
+        torch.set_float32_matmul_precision(matmul_precision)
+    log(f"[train] best tuning loss {best:.4f} → {out_dir / checkpoint}")
+    return out_dir / checkpoint, best
 
 
 def train_delphi(cfg: Config, log=print, resume: bool = False, stop_after: int | None = None) -> Path:
-    """Train Delphi-2M on the prepared data and return the path of the checkpoint with the lowest
-    tuning loss. Runs train.steps + 1 steps, checking every train.eval_every, as Delphi's train.py."""
+    """Train Delphi-2M on the prepared data, at the modLEHR config's size and schedule, and return the path
+    of the checkpoint with the lowest tuning loss (best.pt)."""
     from modlehr.train.loop import pick_device
 
     if resume or stop_after is not None:
@@ -200,79 +298,57 @@ def train_delphi(cfg: Config, log=print, resume: bool = False, stop_after: int |
     prepared, out_dir, t = Path(cfg.data.prepared_dir), Path(cfg.train.out_dir), cfg.train
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "config.yaml").write_text(yaml.safe_dump(cfg.to_dict(), sort_keys=False))
-    device = pick_device(t.device)
     vocab = Vocabulary.load(prepared / "vocab.json")
     ids = delphi_ids(vocab)
     train_data = delphi_rows(open_split(prepared, meds.train_split), ids)
     val_data = delphi_rows(open_split(prepared, meds.tuning_split), ids)
-    train_p2i, val_p2i = get_p2i(train_data), get_p2i(val_data)
-    if t.data_fraction < 1.0:
-        train_p2i = train_p2i[:int(t.data_fraction * len(train_p2i))]
-
-    matmul_precision = torch.get_float32_matmul_precision()
-    torch.manual_seed(t.seed)
-    torch.set_float32_matmul_precision("high")  # as Delphi's train.py: TF32 matrix products on a GPU
-    args = model_args(cfg, vocab)
-    model = Delphi(DelphiConfig(**args)).to(device)
-    opt = model.configure_optimizers(t.weight_decay, t.lr, (0.9, BETA2), device.type)
-    log(f"[train] Delphi-2M, {model.get_num_params() / 1e6:.2f}M parameters, {args['vocab_size']:,} Delphi tokens, "
-        f"{len(train_p2i):,} training records, device {device}")
+    s = {**DELPHI_DEFAULTS, **model_args(cfg, vocab), "batch_size": t.batch_size, "max_iters": t.steps,
+         "lr_decay_iters": t.steps, "warmup_iters": t.warmup, "learning_rate": t.lr, "min_lr": t.min_lr,
+         "weight_decay": t.weight_decay, "beta2": BETA2, "grad_clip": t.grad_clip, "eval_interval": t.eval_every,
+         "eval_iters": t.eval_batches, "seed": t.seed, "data_fraction": t.data_fraction,
+         "no_event_token_rate": NO_EVENT_RATE}
     tracker = Tracker(cfg, out_dir, "train")
-    block = args["block_size"]
-
-    @torch.no_grad()
-    def estimate_loss() -> dict:
-        out = {}
-        model.eval()
-        for split, data, p2i in (("train", train_data, train_p2i), ("val", val_data, val_p2i)):
-            losses = torch.zeros(t.eval_batches, 2)
-            for k in range(t.eval_batches):
-                ix = torch.randint(len(p2i), (t.batch_size,))
-                X, A, Y, B = get_batch(ix, data, p2i, block_size=block, device=device, select="left", cut_batch=True)
-                _, loss = model(X, A, Y, B, validation_loss_mode=True)
-                losses[k] = torch.stack([loss["loss_ce"], loss["loss_dt"]])
-            out[split] = losses.mean(0)
-        model.train()
-        return out
-
-    def train_batch(cut_batch: bool = True):
-        ix = torch.randint(len(train_p2i), (t.batch_size,))
-        return get_batch(ix, train_data, train_p2i, block_size=block, device=device, padding="random",
-                         lifestyle_augmentations=True, select="left", cut_batch=cut_batch)
-
-    X, A, Y, B = train_batch(cut_batch=False)  # Delphi's first batch keeps its padding, so dropout draws match
-    best, t0 = float("inf"), time.time()
-    try:
-        with open(out_dir / "log.jsonl", "w") as logf:
-            for it in range(t.steps + 1):
-                lr = lr_at(it, t)
-                for group in opt.param_groups:
-                    group["lr"] = lr
-                if it % t.eval_every == 0 and it > 0:
-                    losses = estimate_loss()
-                    tune = losses["val"].sum().item()
-                    record = {"step": it, "train_loss": losses["train"].sum().item(), "tune_loss": tune,
-                              "loss_ce": losses["val"][0].item(), "loss_dt": losses["val"][1].item(),
-                              "seconds": round(time.time() - t0, 1)}
-                    logf.write(json.dumps(record) + "\n")
-                    logf.flush()
-                    log(f"[train] step {it:6d}  train {record['train_loss']:.4f}  tune {tune:.4f}  ({record['seconds']}s)")
-                    tracker.log({**{k: v for k, v in record.items() if k not in ("step", "seconds")}, "lr": lr}, it)
-                    if tune < best:
-                        best = tune
-                        torch.save({"model": model.state_dict(), "optimizer": opt.state_dict(), "model_args": args,
-                                    "iter_num": it, "best_val_loss": tune, "config": cfg.to_dict()}, out_dir / "best.pt")
-                _, loss = model(X, A, Y, B)
-                X, A, Y, B = train_batch()
-                loss = loss["loss_ce"] + loss["loss_dt"]
-                loss.backward()
-                if t.grad_clip:
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), t.grad_clip)
-                opt.step()
-                opt.zero_grad(set_to_none=True)
-    finally:
-        torch.set_float32_matmul_precision(matmul_precision)
-    log(f"[train] best tuning loss {best:.4f} → {out_dir / 'best.pt'}")
+    best_path, best = fit(train_data, val_data, s, out_dir, "best.pt", pick_device(t.device), tracker, cfg.to_dict(), log)
     tracker.summary({"best_tune_loss": best})
     tracker.finish()
-    return out_dir / "best.pt"
+    return best_path
+
+
+def read_delphi_config(path: str | Path | None, overrides: list[str]) -> dict:
+    """Settings as Delphi's train.py reads them: its defaults, then a config file, then --key=value arguments."""
+    from ast import literal_eval
+
+    s = dict(DELPHI_DEFAULTS)
+    if path:
+        scope: dict = {}
+        exec(Path(path).read_text(), scope)  # a config file of Delphi's own: plain assignments
+        s.update({k: v for k, v in scope.items() if k in DELPHI_DEFAULTS})
+    for arg in overrides:
+        key, _, value = arg.removeprefix("--").partition("=")
+        if key not in DELPHI_DEFAULTS:
+            raise ValueError(f"unknown Delphi setting {key!r}")
+        try:
+            s[key] = literal_eval(value)
+        except (SyntaxError, ValueError):
+            s[key] = value
+    return s
+
+
+def train_from_delphi_config(path: str | Path | None, overrides: list[str], log=print) -> Path:
+    """`modlehr delphi-train`: Delphi-2M trained here on data in Delphi's own format (train.bin and val.bin in
+    data/<dataset>, or dataset itself when it is a path), with a config of Delphi's own, the way its train.py
+    would. The checkpoint goes to out_dir/ckpt.pt, as Delphi writes it, so Delphi's own evaluation reads it."""
+    from types import SimpleNamespace
+
+    s = read_delphi_config(path, overrides)
+    data_dir = Path(s["dataset"]) if Path(s["dataset"]).is_absolute() else Path("data") / s["dataset"]
+    train_data = np.memmap(data_dir / "train.bin", dtype=np.uint32, mode="r").reshape(-1, 3)
+    val_data = np.memmap(data_dir / "val.bin", dtype=np.uint32, mode="r").reshape(-1, 3)
+    tracking = SimpleNamespace(train=SimpleNamespace(wandb_project=s["wandb_project"] if s["wandb_log"] else None,
+                                                     wandb_entity=None), to_dict=lambda: s)
+    tracker = Tracker(tracking, s["out_dir"], "train")
+    checkpoint, best = fit(train_data, val_data, s, Path(s["out_dir"]), "ckpt.pt", torch.device(s["device"]), tracker,
+                           s, log)
+    tracker.summary({"best_tune_loss": best})
+    tracker.finish()
+    return checkpoint

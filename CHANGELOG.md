@@ -8,6 +8,9 @@ Synthea without Java
   downloads them; generating with Synthea and Java is the alternative
 
 Delphi-2M as a modLEHR model
+- `modlehr delphi-train CONFIG [--key=value ...]` trains it on data already in Delphi's format (train.bin,
+  val.bin), with a config file of Delphi's own, such as its UK Biobank config, and writes ckpt.pt as Delphi
+  does; with the same config and data it ends with the same weights as Delphi's train.py on a CPU
 - `model.architecture: delphi2m` (configs/model/delphi2m.yaml) trains Delphi-2M's own model and training on
   any prepared dataset, at the experiment's size and schedule: `modlehr.model.delphi` ports its `model.py`
   (same modules, parameter names and initialization) and `modlehr.train.delphi` its `train.py` (batches,
