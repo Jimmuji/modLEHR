@@ -27,29 +27,10 @@ the CPU.
 ```bash
 git clone https://github.com/Jimmuji/modLEHR.git && cd modLEHR
 python -m venv .venv && .venv/bin/pip install -e ".[dev]"
-.venv/bin/python -m pytest          # 110 tests, about 20 seconds
+.venv/bin/python -m pytest          # 113 tests, about 20 seconds
 ```
 
 Run every command from the repository root. `modlehr` below means `.venv/bin/modlehr`.
-
-## Try it in a minute
-
-A synthetic toy dataset (2,000 subjects, three diseases, an HbA1c measurement, a discharge note each)
-runs every stage on a laptop CPU in about 16 seconds:
-
-```console
-$ modlehr convert toy --out data/toy_meds
-$ modlehr run --config configs/experiment/toy_gpt.yaml
-[prepare] vocabulary 11 tokens, 4 targets → runs/prepared/toy
-[train] best tuning loss 3.6908 → runs/toy_gpt/best.pt
-[evaluate] mean AUC 0.613 (95% CI 0.472 to 0.753) over 10 target and landmark pairs, controls=at_risk, risk=marginal
-$ modlehr baseline --config configs/experiment/toy_gpt.yaml
-[baseline] logistic: mean AUC 0.487 (95% CI 0.456 to 0.517) over 10 pairs → runs/toy_gpt_logistic/evaluate.csv
-```
-
-The toy notes mention "polyuria" for subjects who will develop disease A, so the transformer, which
-reads note words, beats a logistic regression that sees only codes. The data exist to exercise the
-code, not to learn from.
 
 ## Run an experiment
 
@@ -235,11 +216,10 @@ to 80):
 |---|---|
 | Plain GPT, 5.3M parameters, 5 seeds | 0.676 |
 | Nine other architectures (GQA, MLA, RoPE, ALiBi, SwiGLU, MoE, ...) | 0.676 to 0.677 |
-| Plain GPT + BMI | 0.701 |
 | Logistic regression, same inputs | 0.653 |
 
-No architecture moves AUC by more than 0.001; adding an outpatient BMI reading adds 0.025. Full
-tables, calibration and the Synthea results: [docs/results.md](docs/results.md).
+No architecture moves AUC by more than 0.001. Full tables, calibration and the Synthea results:
+[docs/results.md](docs/results.md).
 
 ## Documentation
 
