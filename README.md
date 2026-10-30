@@ -71,6 +71,7 @@ modlehr compare runs/synthea_gpt_s1 runs/synthea_gpt_gqa_s1 runs/synthea_gpt_log
 | `modlehr validate` | Check a MEDS dataset against the official schemas |
 | `modlehr prepare` | Select events, compute ages, group disease codes, build vocabularies, handle values, attach labels |
 | `modlehr info` | Summarize a prepared dataset |
+| `modlehr embed-tokens` | Give every token a text and its vector from a text encoder, for `model.code_encoding: text_*` |
 | `modlehr train` | Fit the model; keep the checkpoint with the lowest tuning loss |
 | `modlehr evaluate` | Landmark AUC, calibration and held-out likelihood |
 | `modlehr baseline` | Logistic regression and gradient boosting on the same task |
@@ -95,6 +96,7 @@ What each one reads and writes: [docs/pipeline.md](docs/pipeline.md).
 | `norm` | `layernorm`, `rmsnorm` |
 | `ffn` | `gelu_mlp`, `swiglu`, `moe` |
 | `time_encoding` | `sinusoidal_age`, `none` |
+| `code_encoding` | `learned`, `text_frozen`, `text_init`, `text_sum`, `hierarchy` |
 | `value_encoding` | `none`, `mlp` |
 | `text_encoding` | `none`, `hashed_bag` |
 | `head` | `competing_risk` |

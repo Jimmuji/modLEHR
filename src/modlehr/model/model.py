@@ -2,8 +2,9 @@
 
     tokens, ages, values → input head → N blocks → final norm → output head
 
-Input head: h_i = E_code(c_i) + E_age(t_i) + m_i F(z_i) + T(words_i): the value encoding reads a
-measured number, the text encoding the words of a note. An optional `extra` tensor of the same
+Input head: h_i = E_code(c_i) + E_age(t_i) + m_i F(z_i) + T(words_i): the code encoding turns the token
+into a vector (a learned one by default, see code_encodings), the value encoding reads a measured number,
+the text encoding the words of a note. An optional `extra` tensor of the same
 shape is added to h, the hook for other modalities (images) later.
 """
 
@@ -14,13 +15,14 @@ import torch.nn as nn
 
 from modlehr import registry
 from modlehr.config import ModelConfig
-from modlehr.model import encodings, heads, layers  # noqa: F401  (register the parts)
+from modlehr.model import code_encodings, encodings, heads, layers  # noqa: F401  (register the parts)
 
 
 class InputHead(nn.Module):
-    def __init__(self, n_tokens: int, cfg: ModelConfig, n_text_buckets: int = 0):
+    def __init__(self, n_tokens: int, cfg: ModelConfig, n_text_buckets: int = 0, code_inputs: dict | None = None):
         super().__init__()
-        self.embed = nn.Embedding(n_tokens, cfg.d_model, padding_idx=0)
+        self.embed = registry.build("code_encoding", cfg.code_encoding, n_tokens=n_tokens, d_model=cfg.d_model,
+                                    **(code_inputs or {}))
         self.time = registry.build("time_encoding", cfg.time_encoding, d_model=cfg.d_model)
         self.value = registry.build("value_encoding", cfg.value_encoding, d_model=cfg.d_model)
         self.text = registry.build("text_encoding", cfg.text_encoding, d_model=cfg.d_model, n_buckets=n_text_buckets)
@@ -62,10 +64,12 @@ def attention_mask(tokens: torch.Tensor) -> torch.Tensor:
 
 
 class ModLEHR(nn.Module):
-    def __init__(self, cfg: ModelConfig, n_tokens: int, n_targets: int, n_text_buckets: int = 0):
+    def __init__(self, cfg: ModelConfig, n_tokens: int, n_targets: int, n_text_buckets: int = 0,
+                 code_inputs: dict | None = None):
+        """code_inputs: what the code encoding is built from (code_encodings.code_encoding_inputs)."""
         super().__init__()
         self.cfg = cfg
-        self.input_head = InputHead(n_tokens, cfg, n_text_buckets)
+        self.input_head = InputHead(n_tokens, cfg, n_text_buckets, code_inputs)
         self.blocks = nn.ModuleList(Block(cfg) for _ in range(cfg.n_layers))
         self.norm = registry.build("norm", cfg.norm, d_model=cfg.d_model)
         self.head = registry.build("head", cfg.head, d_model=cfg.d_model, n_targets=n_targets)

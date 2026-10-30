@@ -123,6 +123,8 @@ the `description_regex` keeps only disorders as targets.
 | `dropout` | `0.1` | Dropout in the input head, attention and feed-forward layers |
 | `max_len` | `256` | Events per training window, and the most recent events the model sees at evaluation |
 | `time_encoding` | `sinusoidal_age` | `sinusoidal_age`, `none` |
+| `code_encoding` | `learned` | `learned`, `text_frozen`, `text_init`, `text_sum`, `hierarchy` ([model.md](model.md#code-encodings)) |
+| `code_vectors` | none | The file `modlehr embed-tokens` writes, for the `text_*` encodings |
 | `value_encoding` | `none` | `none`, `mlp` (use with `data.value_mode: continuous`) |
 | `text_encoding` | `none` | `none`, `hashed_bag` (needs a `text` rule in the data config) |
 | `attention` | `mha` | `mha`, `gqa`, `rope`, `rope_age`, `alibi_age`, `mla`, `local_age` |

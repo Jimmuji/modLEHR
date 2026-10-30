@@ -1,0 +1,3 @@
+# Code encoding text_frozen (docs/model.md, Code encodings): set model.code_vectors to the file modlehr embed-tokens writes for the prepared data.
+model:
+  code_encoding: text_frozen

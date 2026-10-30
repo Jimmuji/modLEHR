@@ -15,6 +15,7 @@ return:
 | `norm` | `f(d_model)` | `norm(x)` | `[B, T, d_model]` |
 | `ffn` | `f(d_model, dropout)` | `ffn(x)` | `[B, T, d_model]` |
 | `time_encoding` | `f(d_model)` | `enc(ages)` | `[B, T, d_model]`, added to the token embedding |
+| `code_encoding` | `f(n_tokens, d_model, vectors, ancestors)` | `enc(tokens)` | `[B, T, d_model]`, the token embedding |
 | `value_encoding` | `f(d_model)` | `enc(values, has_value)` | `[B, T, d_model]`, added to the token embedding |
 | `text_encoding` | `f(d_model, n_buckets)` | `enc(word_ids, starts)` | `[n_notes, d_model]`, added to each note's event, or `None` |
 | `head` | `f(d_model, n_targets)` | `head(h)`, plus `loss`, `risk`, `sample` (below) | log-rates `[B, T, n_targets]` for `competing_risk` |

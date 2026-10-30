@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+Code encodings: how a token becomes its vector
+- `model.code_encoding` picks it: `learned` (the default, unchanged), `text_frozen`, `text_init` and
+  `text_sum` (from a text encoder's vector of each token's description), and `hierarchy` (plus learned
+  vectors shared by the token's ICD chapter, code prefix, measurement or drug). See docs/model.md
+- `modlehr embed-tokens --encoder ENCODER` gives every token a text from the MEDS codes table and writes
+  its vector from a Hugging Face text encoder, for `model.code_vectors`; needs `pip install transformers`
+
 Synthea without Java
 - The Synthea patients of the README (22,962, MEDS 0.4.1) are on Hugging Face,
   huggingface.co/datasets/Jimmu1215/modlehr-synthea (CC0; Synthea's data are public domain). The quick start

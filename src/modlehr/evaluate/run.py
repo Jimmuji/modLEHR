@@ -47,6 +47,7 @@ from sklearn.metrics import roc_auc_score
 from modlehr.config import Config, ModelConfig
 from modlehr.evaluate.task import history_before, landmark_task, split_first_ages, summarize
 from modlehr.model.delphi import DelphiModel, is_delphi_checkpoint
+from modlehr.model.code_encodings import code_encoding_inputs
 from modlehr.model.model import ModLEHR
 from modlehr.prepare.dataset import PreparedSplit, collate, open_split
 from modlehr.prepare.vocabulary import NO_EVENT, Vocabulary
@@ -61,8 +62,10 @@ def load_model(checkpoint: str | Path, prepared_dir: Path, device: torch.device)
     if is_delphi_checkpoint(state):
         return DelphiModel(state, vocab).to(device).eval(), vocab
     meta = json.loads((Path(prepared_dir) / "prepare.json").read_text())
-    model = ModLEHR(ModelConfig(**state["model_config"]), n_tokens=len(vocab.tokens), n_targets=len(vocab.targets),
-                    n_text_buckets=meta.get("text_buckets", 0))
+    model_cfg = ModelConfig(**state["model_config"])
+    model = ModLEHR(model_cfg, n_tokens=len(vocab.tokens), n_targets=len(vocab.targets),
+                    n_text_buckets=meta.get("text_buckets", 0),
+                    code_inputs=code_encoding_inputs(model_cfg, vocab.tokens, state["model"]))
     model.load_state_dict(state["model"])
     if NO_EVENT in vocab.token_index:  # trained with "no event" tokens: ask at one, placed at the landmark
         model.query_token = vocab.token_index[NO_EVENT]

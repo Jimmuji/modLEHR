@@ -1,0 +1,3 @@
+# Code encoding hierarchy (docs/model.md, Code encodings): groups from the codes themselves; nothing else needed.
+model:
+  code_encoding: hierarchy

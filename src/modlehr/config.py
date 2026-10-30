@@ -94,6 +94,11 @@ class ModelConfig:
     time_encoding: str = "sinusoidal_age"
     value_encoding: str = "none"
     text_encoding: str = "none"  # none | hashed_bag (reads the words of text events)
+    # How a token becomes its input vector (modlehr.model.code_encodings): learned (one learned vector per token),
+    # text_frozen, text_init, text_sum (from a text encoder's vector of the token's description, in the file
+    # code_vectors that `modlehr embed-tokens` writes), hierarchy (plus vectors shared by the token's groups).
+    code_encoding: str = "learned"
+    code_vectors: str | None = None
     attention: str = "mha"
     attention_options: dict = field(default_factory=dict)  # passed to the attention, e.g. {n_kv_heads: 2}
     norm: str = "layernorm"

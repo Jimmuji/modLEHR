@@ -23,6 +23,7 @@ import torch
 import yaml
 
 from modlehr.config import Config
+from modlehr.model.code_encodings import code_encoding_inputs
 from modlehr.model.model import ModLEHR
 from modlehr.prepare.dataset import fixed_windows, open_split, random_windows, subject_subset
 from modlehr.prepare.vocabulary import NO_EVENT, Vocabulary
@@ -69,7 +70,7 @@ def build_model(cfg: Config, prepared_dir: Path) -> tuple[ModLEHR, Vocabulary, d
     vocab = Vocabulary.load(prepared_dir / "vocab.json")
     meta = json.loads((prepared_dir / "prepare.json").read_text())
     model = ModLEHR(cfg.model, n_tokens=len(vocab.tokens), n_targets=len(vocab.targets),
-                    n_text_buckets=meta.get("text_buckets", 0))
+                    n_text_buckets=meta.get("text_buckets", 0), code_inputs=code_encoding_inputs(cfg.model, vocab.tokens))
     return model, vocab, meta
 
 

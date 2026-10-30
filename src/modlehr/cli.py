@@ -6,6 +6,7 @@
     modlehr validate --meds-dir data/synthea_meds
     modlehr prepare  --config configs/experiment/synthea_gpt.yaml
     modlehr info     --config configs/experiment/synthea_gpt.yaml
+    modlehr embed-tokens --config configs/experiment/synthea_gpt.yaml --encoder Qwen/Qwen3-Embedding-0.6B
     modlehr train    --config configs/experiment/synthea_gpt.yaml
     modlehr evaluate --config configs/experiment/synthea_gpt.yaml
     modlehr baseline --config configs/experiment/synthea_gpt.yaml
@@ -30,6 +31,7 @@ from pathlib import Path
 CONFIG_COMMANDS = {
     "prepare": "MEDS → tokenized timelines with labels",
     "info": "summarize a prepared dataset",
+    "embed-tokens": "a text for every token, and its vector from a text encoder (for model.code_encoding text_*)",
     "train": "train a model",
     "evaluate": "AUC at landmark ages and held-out likelihood",
     "baseline": "logistic regression and gradient boosting on the same task",
@@ -79,6 +81,13 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--seed", type=int, help="set train.seed and add _s<seed> to train.out_dir")
         if name in ("evaluate", "generate", "simulate", "delphi"):
             p.add_argument("--checkpoint", help="default: <train.out_dir>/best.pt")
+        if name == "embed-tokens":
+            p.add_argument("--encoder", help="a Hugging Face text encoder, a name or a local path; without it only the "
+                           "texts are written")
+            p.add_argument("--out", help="default: <data.prepared_dir>/token_vectors/<encoder>.npz")
+            p.add_argument("--pooling", choices=["auto", "last", "cls", "mean"], default="auto",
+                           help="auto: the last token for a decoder (left padding), the first otherwise")
+            p.add_argument("--batch-size", type=int, default=32)
         if name == "export-delphi":
             p.add_argument("--out", help="default: <train.out_dir>_delphi_data")
             p.add_argument("--delphi-out", help="where Delphi's train.py writes its checkpoint; default: <train.out_dir>_delphi_code")
@@ -176,6 +185,11 @@ def main(argv: list[str] | None = None) -> None:
         from modlehr.prepare.pipeline import describe
         for line in describe(cfg.data):
             print(line)
+    elif args.command == "embed-tokens":
+        from modlehr.prepare.token_text import embed_tokens
+        from modlehr.train.loop import pick_device
+        device = str(pick_device(cfg.train.device)) if args.encoder else "cpu"
+        embed_tokens(cfg.data.prepared_dir, cfg.data.meds_dir, args.encoder, args.out, args.pooling, args.batch_size, device)
     elif args.command == "train":
         from modlehr.train.loop import train
         train(cfg, resume=args.resume, stop_after=args.stop_after)
