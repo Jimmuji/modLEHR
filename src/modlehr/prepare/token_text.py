@@ -12,8 +12,8 @@ token enters the model through what its code means rather than through an id alo
                 "Medication: START ASPIRIN"); padding has no text and a zero vector
 
 The encoder runs once, offline: a Hugging Face model (a path or a name), each text pooled to one vector (the
-last token for a decoder such as Qwen3-Embedding, the first for an encoder such as SapBERT) and scaled to
-length 1. The output, <prepared_dir>/token_vectors/<encoder>.npz, holds the tokens it was made for; a model
+[CLS] token of an encoder such as SapBERT, the last token of a decoder such as Qwen3-Embedding) and scaled
+to length 1. The output, <prepared_dir>/token_vectors/<encoder>.npz, holds the tokens it was made for; a model
 checks them against its vocabulary. The texts are written beside it (.tsv) to read through.
 """
 
@@ -117,14 +117,17 @@ def encode(texts: list[str], encoder: str, pooling: str = "auto", batch_size: in
         raise SystemExit("modlehr embed-tokens needs the transformers package: pip install transformers") from e
 
     tokenizer = AutoTokenizer.from_pretrained(encoder)
-    if pooling == "auto":  # decoders (Qwen3-Embedding) pad on the left and are read at the last token
-        pooling = "last" if tokenizer.padding_side == "left" else "cls"
+    if pooling == "auto":  # an encoder (BERT, SapBERT) is read at its [CLS] token, a decoder (Qwen3-Embedding) at its last
+        pooling = "cls" if tokenizer.cls_token else "last"
     if pooling not in ("last", "cls", "mean"):
         raise ValueError(f"pooling must be auto, last, cls or mean, not {pooling!r}")
     if pooling == "last":
         tokenizer.padding_side = "left"
+    import transformers
+
     dtype = torch.bfloat16 if str(device).startswith("cuda") else torch.float32
-    model = AutoModel.from_pretrained(encoder, torch_dtype=dtype).to(device).eval()
+    key = "dtype" if int(transformers.__version__.split(".")[0]) >= 5 else "torch_dtype"  # renamed in transformers 5
+    model = AutoModel.from_pretrained(encoder, **{key: dtype}).to(device).eval()
     keep = [i for i, t in enumerate(texts) if t]
     out = None
     with torch.no_grad():

@@ -86,7 +86,7 @@ def build_parser() -> argparse.ArgumentParser:
                            "texts are written")
             p.add_argument("--out", help="default: <data.prepared_dir>/token_vectors/<encoder>.npz")
             p.add_argument("--pooling", choices=["auto", "last", "cls", "mean"], default="auto",
-                           help="auto: the last token for a decoder (left padding), the first otherwise")
+                           help="auto: the [CLS] token if the tokenizer has one (BERT), else the last token (a decoder)")
             p.add_argument("--batch-size", type=int, default=32)
         if name == "export-delphi":
             p.add_argument("--out", help="default: <train.out_dir>_delphi_data")
