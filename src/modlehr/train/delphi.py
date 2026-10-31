@@ -336,12 +336,15 @@ def read_delphi_config(path: str | Path | None, overrides: list[str]) -> dict:
 
 def train_from_delphi_config(path: str | Path | None, overrides: list[str], log=print) -> Path:
     """`modlehr delphi-train`: Delphi-2M trained here on data in Delphi's own format (train.bin and val.bin in
-    data/<dataset>, or dataset itself when it is a path), with a config of Delphi's own, the way its train.py
-    would. The checkpoint goes to out_dir/ckpt.pt, as Delphi writes it, so Delphi's own evaluation reads it."""
+    data/<dataset> as Delphi's train.py looks, else dataset itself as a path, absolute or relative), with a
+    config of Delphi's own, the way its train.py would. The checkpoint goes to out_dir/ckpt.pt, as Delphi
+    writes it, so Delphi's own evaluation reads it."""
     from types import SimpleNamespace
 
     s = read_delphi_config(path, overrides)
-    data_dir = Path(s["dataset"]) if Path(s["dataset"]).is_absolute() else Path("data") / s["dataset"]
+    data_dir = Path("data") / s["dataset"]
+    if not (data_dir / "train.bin").exists():
+        data_dir = Path(s["dataset"])
     train_data = np.memmap(data_dir / "train.bin", dtype=np.uint32, mode="r").reshape(-1, 3)
     val_data = np.memmap(data_dir / "val.bin", dtype=np.uint32, mode="r").reshape(-1, 3)
     tracking = SimpleNamespace(train=SimpleNamespace(wandb_project=s["wandb_project"] if s["wandb_log"] else None,

@@ -4,6 +4,7 @@ check that it trains the same model as Delphi's own code."""
 from __future__ import annotations
 
 import dataclasses
+import io
 import json
 import math
 import os
@@ -161,9 +162,10 @@ def test_delphi2m_trains_the_same_model_as_delphis_own_code(tiny_config, tmp_pat
         assert torch.equal(ours["model"][key], value), key
 
 
-def test_delphi_train_reads_delphis_own_format_and_config(tiny_config, tmp_path):
+def test_delphi_train_reads_delphis_own_format_and_config(tiny_config, tmp_path, monkeypatch):
     """`modlehr delphi-train` trains on train.bin and val.bin with a config file of Delphi's own, and writes
-    ckpt.pt as Delphi does, which modLEHR's evaluation then reads."""
+    ckpt.pt as Delphi does, which modLEHR's evaluation then reads. A relative --dataset that is not under data/
+    is read as a path, and the "→" of its last line can be written to a file in a Windows code page."""
     from modlehr.cli import main
     from modlehr.evaluate.run import load_model
 
@@ -175,6 +177,13 @@ def test_delphi_train_reads_delphis_own_format_and_config(tiny_config, tmp_path)
     assert state["iter_num"] in (10, 20) and state["model_args"]["mask_ties"] is True
     model, _ = load_model(tmp_path / "ours" / "ckpt.pt", Path(tiny_config.data.prepared_dir), "cpu")
     assert isinstance(model, DelphiModel)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(io.BytesIO(), encoding="cp1252"))
+    main(["delphi-train", str(tmp_path / "export" / "delphi_config.py"), "--device=cpu", "--dataset=export",
+          "--max_iters=10", "--eval_interval=10", "--out_dir=relative"])
+    assert (tmp_path / "relative" / "ckpt.pt").exists()
+    sys.stdout.flush()
+    assert "→".encode() in sys.stdout.buffer.getvalue()
     with pytest.raises(ValueError, match="unknown Delphi setting"):
         main(["delphi-train", str(tmp_path / "export" / "delphi_config.py"), "--n_layers=2"])
 

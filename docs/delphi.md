@@ -44,10 +44,12 @@ modlehr delphi-train path/to/Delphi/config/train_delphi.py --dataset=/path/to/uk
 ```
 
 `modlehr delphi-train` reads settings the way Delphi's `train.py` does (its defaults, then the config
-file, then `--key=value` settings), the data from `train.bin` and `val.bin` in `data/<dataset>` (or in
-`dataset` when it is a path), and writes `<out_dir>/ckpt.pt` as Delphi does, so Delphi's own
+file, then `--key=value` settings), the data from `train.bin` and `val.bin` in `data/<dataset>` (else in
+`dataset` itself, an absolute or relative path), and writes `<out_dir>/ckpt.pt` as Delphi does, so Delphi's own
 evaluation (`evaluate_auc.py`) reads it unchanged. Given the same config and data, it ends with the
 same weights as Delphi's `train.py` on a CPU (`tests/test_delphi.py`).
+At Delphi's commit fb72166, `evaluate_auc.py` passes `health_token_replacement_prob` to
+`utils.get_batch`, which no longer takes it; drop that argument (its default, 0.0, does nothing).
 
 ## Delphi-2M and modLEHR's plain GPT
 

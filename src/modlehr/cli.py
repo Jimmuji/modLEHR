@@ -69,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
     dtr = sub.add_parser("delphi-train", help="train Delphi-2M on data in Delphi's own format, with a config of its own",
                          description="Train modLEHR's Delphi-2M the way Delphi's train.py would: its defaults, then a "
                          "config file of its own, then --key=value settings. Reads train.bin and val.bin from "
-                         "data/<dataset> (or dataset, when it is a path) and writes <out_dir>/ckpt.pt as Delphi does.")
+                         "data/<dataset> as Delphi does, else from dataset as a path, and writes <out_dir>/ckpt.pt as Delphi does.")
     dtr.add_argument("delphi_config", nargs="?", help="a config file in Delphi's format, e.g. config/train_delphi.py")
     dtr.add_argument("settings", nargs=argparse.REMAINDER, metavar="--KEY=VALUE", help="Delphi settings, e.g. --device=cuda")
 
@@ -139,7 +139,8 @@ def load(args: argparse.Namespace):
 
 def main(argv: list[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
-    sys.stdout.reconfigure(line_buffering=True)  # progress shows up when output goes to a file
+    # Progress shows up when output goes to a file, and "→" can be written there on Windows too
+    sys.stdout.reconfigure(line_buffering=True, encoding="utf-8")
 
     if args.command == "convert":
         if args.source == "toy":

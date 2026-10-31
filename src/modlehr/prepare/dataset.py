@@ -109,10 +109,12 @@ class SplitWriter:
         The order does not depend on how the MEDS data was sharded, so the same data always gives
         the same arrays, and the same seed draws the same training windows.
         """
-        load = lambda i, k: np.load(self.chunk_dir / f"{i:05d}_{k}.npy", mmap_mode="r")  # noqa: E731
+        path = lambda i, k: self.chunk_dir / f"{i:05d}_{k}.npy"  # noqa: E731
+        load = lambda i, k: np.load(path(i, k), mmap_mode="r")  # noqa: E731
         chunks = range(self.n_chunks)
-        sids = [np.asarray(load(i, "subject_ids")) for i in chunks]
-        offs = [np.asarray(load(i, "offsets")) for i in chunks]
+        # Read, not mapped: these live until the chunks are deleted, which Windows refuses while a file is mapped
+        sids = [np.load(path(i, "subject_ids")) for i in chunks]
+        offs = [np.load(path(i, "offsets")) for i in chunks]
         subject_ids = np.concatenate(sids) if sids else np.zeros(0, dtype=np.int64)
         chunk_of = np.concatenate([np.full(len(x), i) for i, x in enumerate(sids)]) if sids else np.zeros(0, int)
         start = np.concatenate([o[:-1] for o in offs]) if offs else np.zeros(0, np.int64)
