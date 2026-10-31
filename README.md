@@ -246,6 +246,7 @@ configs/
   data/            which MEDS dataset, which events, how to tokenize them
   model/           which registered parts make up the model
   experiment/      data + model + training + evaluation for one run
+  tasks/           ACES prediction tasks, such as 30-day readmission on MIMIC-IV
 src/modlehr/
   data/            MEDS reader and validation; adapters/ convert sources to MEDS; toy.py
   prepare/         event selection, target grouping, vocabularies, values, labels, batches

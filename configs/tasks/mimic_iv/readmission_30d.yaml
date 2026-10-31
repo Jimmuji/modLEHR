@@ -1,0 +1,35 @@
+# ACES task: hospital readmission within 30 days of a discharge alive (MC2 in Pollet & McDermott,
+# arXiv 2609.18134), on the official MIMIC_IV_MEDS ETL (data/mimic_iv_meds). One sample per hospital
+# discharge; the input is everything up to and including the discharge, so the stay's diagnoses, which
+# that ETL times at discharge, are in it. No censoring requirement: MIMIC-IV has no events after a
+# patient's last discharge other than death, so asking for later data would keep only patients who came
+# back (the reason MEDS-DEV dropped its own readmission task). Patients who die within 30 days without
+# coming back are negatives.
+predicates:
+  hospital_admission:
+    code: {regex: "^HOSPITAL_ADMISSION//.*"}
+  hospital_discharge:
+    code: {regex: "^HOSPITAL_DISCHARGE//.*"}
+  died_in_hospital:
+    code: HOSPITAL_DISCHARGE//DIED
+  death:
+    code: MEDS_DEATH
+
+trigger: hospital_discharge
+
+windows:
+  input:
+    start: null
+    end: trigger
+    start_inclusive: True
+    end_inclusive: True
+    index_timestamp: end
+    has:
+      died_in_hospital: (None, 0)
+      death: (None, 0)    # in-hospital deaths are timed at deathtime, out-of-hospital ones at 00:00 of dod
+  target:
+    start: trigger
+    end: start + 30d
+    start_inclusive: False
+    end_inclusive: True
+    label: hospital_admission
