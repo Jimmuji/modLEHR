@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import json
 from pathlib import Path
 
 import numpy as np
@@ -13,7 +14,8 @@ from modlehr.evaluate.run import load_model
 from modlehr.model.code_encodings import groups_of, principal_components, token_ancestors
 from modlehr.model.model import ModLEHR
 from modlehr.prepare.pipeline import run_prepare
-from modlehr.prepare.token_text import describe_tokens, read_vectors, token_texts, write_vectors
+from modlehr.prepare.token_text import (describe_tokens, embed_tokens, read_vectors, table_vectors, token_texts,
+                                        write_vectors)
 from modlehr.prepare.vocabulary import NO_EVENT, PAD, Vocabulary
 from modlehr.train.loop import train
 
@@ -110,3 +112,26 @@ def test_prepared_tokens_have_texts(tiny_config):
     vocab = Vocabulary.load(Path(tiny_config.data.prepared_dir) / "vocab.json")
     assert table["token"].tolist() == vocab.tokens
     assert (table.loc[1:, "text"].str.len() > 0).all()
+
+
+def test_code_table_vectors():
+    """A token takes its code's vector, else the mean of the codes under it; ICD-9 E800.0 is not under ICD-10 E80."""
+    v = {k: np.eye(4, dtype=np.float32)[i] for i, k in enumerate(["E11", "E80.0", "E80.1", "E800.0"])}
+    v["428.0"] = np.array([3, 4, 0, 0], np.float32)
+    tokens = [PAD, "ICD10//E11", "ICD10//E80", "ICD9//428", "DIAGNOSIS//ICD//9//E8000", "GENDER//F", "GENDER//M"]
+    out, found = table_vectors(tokens, v)
+    assert found["source"].tolist() == ["pad", "exact", "member", "member", "exact", "random", "random"]
+    assert found["codes"].tolist() == [0, 1, 2, 1, 1, 0, 0]
+    assert np.allclose(out[0], 0) and np.allclose(out[1], v["E11"]) and np.allclose(out[4], v["E800.0"])
+    assert np.allclose(out[2], np.array([0, 1, 1, 0]) / np.sqrt(2)) and np.allclose(out[3], [0.6, 0.8, 0, 0])
+    assert np.allclose(np.linalg.norm(out[1:], axis=1), 1) and not np.allclose(out[5], out[6])
+    assert np.array_equal(out, table_vectors(tokens, v)[0])  # the random vectors are the same every time
+
+
+def test_code_table_gives_vectors_for_the_prepared_vocabulary(tiny_config, tmp_path):
+    run_prepare(tiny_config.data, log=QUIET)
+    table = tmp_path / "code2embeddings.json"
+    table.write_text(json.dumps({"E11.9": [1.0, 0.0, 0.0], "I21": [0.0, 1.0, 0.0]}))
+    path = embed_tokens(tiny_config.data.prepared_dir, tiny_config.data.meds_dir, None, log=QUIET, code_table=table)
+    vocab = Vocabulary.load(Path(tiny_config.data.prepared_dir) / "vocab.json")
+    assert path.name == "code2embeddings.npz" and read_vectors(path, vocab.tokens).shape == (len(vocab.tokens), 3)

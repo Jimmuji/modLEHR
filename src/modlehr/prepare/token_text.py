@@ -15,12 +15,20 @@ The encoder runs once, offline: a Hugging Face model (a path or a name), each te
 [CLS] token of an encoder such as SapBERT, the last token of a decoder such as Qwen3-Embedding) and scaled
 to length 1. The output, <prepared_dir>/token_vectors/<encoder>.npz, holds the tokens it was made for; a model
 checks them against its vocabulary. The texts are written beside it (.tsv) to read through.
+
+A code table (--code-table) gives the vectors instead: vectors of codes made elsewhere, such as MedTok's
+code2embeddings.json ({code: vector}, ICD codes written with their dot, E11.9, 428.0). A diagnosis token takes
+its code's vector, or else the mean of the vectors of the codes under it (ICD10//E11: E11.0, E11.65, ...); a
+token the table does not have (an admission type, sex) takes a fixed random vector of its own, so tokens stay
+apart. The table has no families, so where ICD-9 and ICD-10 write the same code (V codes) the two are joined.
 """
 
 from __future__ import annotations
 
+import bisect
 import json
 import re
+import zlib
 from pathlib import Path
 
 import numpy as np
@@ -171,9 +179,67 @@ def read_vectors(path: str | Path, tokens: list[str]) -> np.ndarray:
     return raw["vectors"].astype(np.float32)
 
 
+def read_code_table(path: str | Path) -> dict[str, np.ndarray]:
+    """{code: vector} from a JSON file of {code: [numbers]} (MedTok's code2embeddings.json) or an .npz of codes and
+    vectors."""
+    path = Path(path)
+    if path.suffix == ".npz":
+        raw = np.load(path)
+        return dict(zip((str(c) for c in raw["codes"]), raw["vectors"].astype(np.float32)))
+    with open(path) as f:
+        return {str(c): np.asarray(v, dtype=np.float32) for c, v in json.load(f).items()}
+
+
+def icd_key(family: str, code: str) -> str:
+    """A diagnosis code as a code table writes it: E119 → E11.9, 4280 → 428.0, ICD-9 E8000 → E800.0, E11 → E11."""
+    code = code.replace(".", "").upper()
+    cut = 4 if family == "ICD9" and code.startswith("E") else 3
+    return code if len(code) <= cut else f"{code[:cut]}.{code[cut:]}"
+
+
+def table_vectors(tokens: list[str], table: dict[str, np.ndarray]) -> tuple[np.ndarray, pd.DataFrame]:
+    """Each token's unit vector from a code table, and a table of token, key, codes (how many were averaged) and
+    source: exact (the token's code is in the table), member (the mean of the codes under it), random (not in
+    the table: a random vector seeded by the token, the same every time) or pad (zero)."""
+    keys = sorted(table)
+    dim = len(next(iter(table.values())))
+    out = np.zeros((len(tokens), dim), dtype=np.float32)
+    rows = []
+    for i, token in enumerate(tokens):
+        key, n, source = "", 0, "pad"
+        if token != PAD:
+            m = next(filter(None, (p.match(token) for p in RAW_ICD)), None)
+            key = icd_key(f"ICD{m.group(1)}", m.group(2)) if m else token
+            if key in table:
+                vec, n, source = table[key], 1, "exact"
+            else:
+                # codes under the key: E11 → E11.*, and E11.6 → E11.6* (E800.0 is not under E80)
+                prefix = key if "." in key else key + "."
+                lo = bisect.bisect_left(keys, prefix)
+                hi = bisect.bisect_left(keys, prefix + "￿")
+                if m and hi > lo:
+                    vec, n, source = np.mean([table[k] for k in keys[lo:hi]], axis=0), hi - lo, "member"
+                else:
+                    vec, source = np.random.default_rng(zlib.crc32(token.encode())).standard_normal(dim), "random"
+            out[i] = vec / (np.linalg.norm(vec) or 1.0)
+        rows.append((token, key, n, source))
+    return out, pd.DataFrame(rows, columns=["token", "key", "codes", "source"])
+
+
 def embed_tokens(prepared_dir: str | Path, meds_dir: str | Path, encoder: str | None, out: str | Path | None = None,
-                 pooling: str = "auto", batch_size: int = 32, device: str = "cpu", log=print) -> Path:
-    """Write the token texts and, with an encoder, their vectors. Returns the .npz path (or the .tsv without one)."""
+                 pooling: str = "auto", batch_size: int = 32, device: str = "cpu", log=print,
+                 code_table: str | Path | None = None) -> Path:
+    """Write the token texts and, with an encoder, their vectors; or, with a code table, each token's vector from
+    it. Returns the .npz path (or the .tsv with neither)."""
+    if code_table is not None:
+        tokens = Vocabulary.load(Path(prepared_dir) / "vocab.json").tokens
+        vectors, found = table_vectors(tokens, read_code_table(code_table))
+        log("[embed] " + ", ".join(f"{n:,} {s}" for s, n in found["source"].value_counts().items())
+            + f" of {len(found):,} tokens")
+        path = Path(out or Path(prepared_dir) / "token_vectors" / f"{Path(code_table).stem}.npz")
+        write_vectors(path, found, vectors, str(code_table), "table")
+        log(f"[embed] {vectors.shape[1]}-dimensional vectors from {code_table} → {path}")
+        return path
     table = token_texts(prepared_dir, meds_dir)
     counts = table["source"].value_counts()
     log("[embed] " + ", ".join(f"{n:,} {s}" for s, n in counts.items()) + f" of {len(table):,} tokens")

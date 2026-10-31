@@ -31,7 +31,7 @@ from pathlib import Path
 CONFIG_COMMANDS = {
     "prepare": "MEDS → tokenized timelines with labels",
     "info": "summarize a prepared dataset",
-    "embed-tokens": "a text for every token, and its vector from a text encoder (for model.code_encoding text_*)",
+    "embed-tokens": "a text for every token, and its vector from a text encoder or a code table (for model.code_encoding text_*)",
     "train": "train a model",
     "evaluate": "AUC at landmark ages and held-out likelihood",
     "baseline": "logistic regression and gradient boosting on the same task",
@@ -88,6 +88,8 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--pooling", choices=["auto", "last", "cls", "mean"], default="auto",
                            help="auto: the [CLS] token if the tokenizer has one (BERT), else the last token (a decoder)")
             p.add_argument("--batch-size", type=int, default=32)
+            p.add_argument("--code-table", help="vectors of codes made elsewhere, in place of --encoder: a JSON file of "
+                           "{code: vector} (MedTok's code2embeddings.json) or an .npz of codes and vectors")
         if name == "export-delphi":
             p.add_argument("--out", help="default: <train.out_dir>_delphi_data")
             p.add_argument("--delphi-out", help="where Delphi's train.py writes its checkpoint; default: <train.out_dir>_delphi_code")
@@ -190,7 +192,10 @@ def main(argv: list[str] | None = None) -> None:
         from modlehr.prepare.token_text import embed_tokens
         from modlehr.train.loop import pick_device
         device = str(pick_device(cfg.train.device)) if args.encoder else "cpu"
-        embed_tokens(cfg.data.prepared_dir, cfg.data.meds_dir, args.encoder, args.out, args.pooling, args.batch_size, device)
+        if args.encoder and args.code_table:
+            raise SystemExit("embed-tokens takes --encoder or --code-table, not both")
+        embed_tokens(cfg.data.prepared_dir, cfg.data.meds_dir, args.encoder, args.out, args.pooling, args.batch_size, device,
+                     code_table=args.code_table)
     elif args.command == "train":
         from modlehr.train.loop import train
         train(cfg, resume=args.resume, stop_after=args.stop_after)
