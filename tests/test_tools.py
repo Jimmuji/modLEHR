@@ -502,12 +502,17 @@ def test_scripts_parse():
     """Every shell script and job file in scripts/ is valid bash."""
     import subprocess
 
+    bash = shutil.which("bash")
+    if bash is None or subprocess.run([bash, "-c", "true"], capture_output=True).returncode != 0:
+        pytest.skip("no working bash to check the scripts with")
     scripts = sorted((Path(__file__).resolve().parents[1] / "scripts").rglob("*.sh")) + \
         sorted((Path(__file__).resolve().parents[1] / "scripts").rglob("*.sbatch"))
     assert scripts
     for path in scripts:
-        result = subprocess.run(["bash", "-n", str(path)], capture_output=True, text=True)
-        assert result.returncode == 0, f"{path.name}: {result.stderr}"
+        # On stdin, as bytes: no path for bash to translate (WSL's bash cannot open C:\...), and bash sees the
+        # file's own line endings
+        result = subprocess.run([bash, "-n"], input=path.read_bytes(), capture_output=True)
+        assert result.returncode == 0, f"{path.name}: {result.stderr.decode(errors='replace')}"
 
 
 def test_settings_study_pairs_runs_by_seed(tmp_path):

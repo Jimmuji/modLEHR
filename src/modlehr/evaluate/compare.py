@@ -40,7 +40,7 @@ def group_runs(paths: list[str | Path]) -> dict[str, list[Path]]:
     for p in map(Path, paths):
         keyed.setdefault(p.parent / SEED_SUFFIX.sub("", p.name), []).append(p)
     names = [key.name for key in keyed]
-    return {(key.name if names.count(key.name) == 1 else str(key)): dirs for key, dirs in keyed.items()}
+    return {(key.name if names.count(key.name) == 1 else key.as_posix()): dirs for key, dirs in keyed.items()}
 
 
 def load_group(dirs: list[Path]) -> tuple[pd.Series, float | None]:
