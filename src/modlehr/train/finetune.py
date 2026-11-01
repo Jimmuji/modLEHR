@@ -200,9 +200,9 @@ def start_model(cfg: Config, prepared: Path, log=print) -> ModLEHR:
         theirs = {k: v for k, v in ((yaml.safe_load(stored.read_text()) or {}).get("data") or {}).items()
                   if k != "prepared_dir"}
         mine = {k: v for k, v in comparable_config(cfg.data, theirs).items() if k != "prepared_dir"}
-        if mine != theirs:
-            raise ValueError(f"{init} was trained on other data than this config's: data.{', data.'.join(sorted(
-                k for k in set(mine) | set(theirs) if mine.get(k) != theirs.get(k)))} differ")
+        differ = sorted(k for k in set(mine) | set(theirs) if mine.get(k) != theirs.get(k))
+        if differ:
+            raise ValueError(f"{init} was trained on other data than this config's: data.{', data.'.join(differ)} differ")
     model = load_model(init, prepared, torch.device("cpu"))[0]
     if not isinstance(model, ModLEHR):
         raise ValueError(f"{init} is a Delphi-2M checkpoint; fine-tuning takes a modLEHR model")
