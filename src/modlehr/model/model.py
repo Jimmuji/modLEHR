@@ -85,6 +85,10 @@ class ModLEHR(nn.Module):
             nn.init.normal_(module.weight, std=0.02)
 
     def forward(self, batch: dict[str, torch.Tensor], extra: torch.Tensor | None = None) -> torch.Tensor:
+        return self.head(self.hidden(batch, extra))
+
+    def hidden(self, batch: dict[str, torch.Tensor], extra: torch.Tensor | None = None) -> torch.Tensor:
+        """[B, T, d_model] the final normed states the head reads (a fine-tuned classifier reads them too)."""
         tokens = batch["tokens"]
         text = (batch["text_ids"], batch["text_offsets"], batch["text_pos"]) if "text_pos" in batch else None
         x = self.input_head(tokens, batch["ages"], batch["values"], batch["has_value"], extra, text)
@@ -94,7 +98,7 @@ class ModLEHR(nn.Module):
                 mod.valid = (tokens != 0).reshape(-1)
         for block in self.blocks:
             x = block(x, mask, batch["ages"])
-        return self.head(self.norm(x))
+        return self.norm(x)
 
     def loss(self, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, dict]:
         out = self(batch)

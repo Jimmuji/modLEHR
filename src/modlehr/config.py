@@ -5,6 +5,7 @@
     model: ...     # which registered parts to assemble, and their sizes
     train: ...     # optimization
     evaluate: ...  # prediction tasks
+    finetune: ...  # one binary task to fine-tune on (optional)
 
 Paths inside the config are relative to the directory the command is run from. Any value can
 be overridden on the command line without a new file, as section.key=value with the value
@@ -157,11 +158,23 @@ class EvaluateConfig:
 
 
 @dataclass
+class FinetuneConfig:
+    """`modlehr finetune`: one binary task. Its optimization (lr, steps, batch_size, patience, ...) and out_dir come
+    from the train section, which a fine-tuning config sets for itself."""
+    # Labels in the MEDS label format, one subdirectory of .parquet files per split with a row per sample:
+    # subject_id, prediction_time, boolean_value (what an ACES task in configs/tasks writes)
+    labels: str | None = None
+    init: str | None = None  # the pretrained checkpoint to start from; null trains the same model from scratch
+    freeze: bool = False  # train the classifier only (a linear probe of the pretrained model)
+
+
+@dataclass
 class Config:
     data: DataConfig = field(default_factory=DataConfig)
     model: ModelConfig = field(default_factory=ModelConfig)
     train: TrainConfig = field(default_factory=TrainConfig)
     evaluate: EvaluateConfig = field(default_factory=EvaluateConfig)
+    finetune: FinetuneConfig = field(default_factory=FinetuneConfig)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -244,7 +257,7 @@ def check(cfg: Config) -> Config:
     return cfg
 
 
-SECTIONS = ("data", "model", "train", "evaluate")
+SECTIONS = ("data", "model", "train", "evaluate", "finetune")
 
 
 def load_config(path: str | Path) -> Config:
@@ -257,6 +270,7 @@ def load_config(path: str | Path) -> Config:
         model=_section(ModelConfig, raw.get("model")),
         train=_section(TrainConfig, raw.get("train")),
         evaluate=_section(EvaluateConfig, raw.get("evaluate")),
+        finetune=_section(FinetuneConfig, raw.get("finetune")),
     ))
 
 

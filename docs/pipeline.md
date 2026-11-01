@@ -149,6 +149,23 @@ transformer has learned nothing the inputs did not already say. If gradient boos
 better than the logistic regression, the data carry little signal beyond single features, and a
 larger model will not find more.
 
+## finetune
+
+Learns one binary task from labels in the MEDS label format, such as an ACES task's output
+(`configs/tasks`, e.g. 30-day readmission): `<finetune.labels>/<split>/*.parquet`, a row per sample with
+`subject_id`, `prediction_time` and `boolean_value`. A sample's input is its subject's events at or before the
+prediction time in the prepared data (the last `model.max_len`), and a linear classifier reads the model's final
+state at the last of them. The model starts from `finetune.init`, a pretrained checkpoint, and is trained whole
+(or only the classifier with `finetune.freeze: true`); `finetune.init: null` trains the same model from scratch,
+the supervised baseline. Optimization comes from the `train` section; `train.patience` counts tuning checks
+without a new highest tuning AUROC.
+
+Writes to `train.out_dir`: `best.pt` (highest tuning AUROC), `log.jsonl`, `finetune.json` (AUROC, AUPRC and counts
+on `evaluate.split`) and `predictions_<split>.parquet` in the MEDS prediction format, which names patients and
+so stays with the data. Prediction times become ages as prepare computes them (float32 years); when an input
+event comes after the prediction time at the same float32 age (minutes apart), that sample's input stops before
+that age, so no later event is read as an earlier one.
+
 ## generate
 
 Starts from a patient's history up to `--start-age`, draws the next outcome and the time until it

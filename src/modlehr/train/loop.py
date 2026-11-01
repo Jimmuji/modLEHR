@@ -47,9 +47,11 @@ def lr_at(step: int, cfg) -> float:
     return cfg.min_lr + 0.5 * (cfg.lr - cfg.min_lr) * (1 + math.cos(math.pi * min(progress, 1.0)))
 
 
-def make_optimizer(model: torch.nn.Module, cfg) -> torch.optim.Optimizer:
-    decay = [p for n, p in model.named_parameters() if p.dim() >= 2 and "embed" not in n]
-    rest = [p for n, p in model.named_parameters() if not (p.dim() >= 2 and "embed" not in n)]
+def make_optimizer(model: torch.nn.Module, cfg, trainable=None) -> torch.optim.Optimizer:
+    """AdamW, weight decay on matrices other than embeddings. trainable(name) picks the parameters (all when None)."""
+    named = [(n, p) for n, p in model.named_parameters() if trainable is None or trainable(n)]
+    decay = [p for n, p in named if p.dim() >= 2 and "embed" not in n]
+    rest = [p for n, p in named if not (p.dim() >= 2 and "embed" not in n)]
     return torch.optim.AdamW([{"params": decay, "weight_decay": cfg.weight_decay},
                               {"params": rest, "weight_decay": 0.0}], lr=cfg.lr, betas=(0.9, 0.99))
 

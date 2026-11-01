@@ -75,6 +75,7 @@ modlehr compare runs/synthea_gpt_s1 runs/synthea_gpt_gqa_s1 runs/synthea_gpt_log
 | `modlehr train` | Fit the model; keep the checkpoint with the lowest tuning loss |
 | `modlehr evaluate` | Landmark AUC, calibration and held-out likelihood |
 | `modlehr baseline` | Logistic regression and gradient boosting on the same task |
+| `modlehr finetune` | Fine-tune a model on one binary task (an ACES task's labels, see `configs/tasks`); AUROC and predictions |
 | `modlehr generate` | Sample future outcomes for one patient |
 | `modlehr simulate` | Sample one future per held-out patient and compare incidence by age with the records |
 | `modlehr delphi` | Delphi-2M's own AUC, to set a model next to Delphi-2M's published numbers |

@@ -10,6 +10,7 @@
     modlehr train    --config configs/experiment/synthea_gpt.yaml
     modlehr evaluate --config configs/experiment/synthea_gpt.yaml
     modlehr baseline --config configs/experiment/synthea_gpt.yaml
+    modlehr finetune --config configs/experiment/mimic_iv_gpt_readmission_30d.yaml   (one ACES task, AUROC)
     modlehr generate --config configs/experiment/synthea_gpt.yaml --subject 0 --start-age 50
     modlehr simulate --config configs/experiment/synthea_gpt.yaml --start-age 50
     modlehr delphi   --config configs/experiment/mimic_iv_core_gpt.yaml --seed 1   (Delphi-2M's own AUC)
@@ -35,6 +36,7 @@ CONFIG_COMMANDS = {
     "train": "train a model",
     "evaluate": "AUC at landmark ages and held-out likelihood",
     "baseline": "logistic regression and gradient boosting on the same task",
+    "finetune": "fine-tune a model on one binary task (an ACES task's labels) and report its AUROC",
     "generate": "sample futures for one patient",
     "simulate": "sample one future per held-out patient and compare incidence with the records",
     "delphi": "Delphi-2M's own AUC (by sex and 5-year age band, against never-havers), to compare with its numbers",
@@ -110,6 +112,10 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--query", choices=["event", "gap"], default="event",
                            help="read the model at the event a point predicts from, or at a \"no event\" token "
                            "placed one gap before the diagnosis (models with that token only)")
+        if name == "finetune":
+            p.add_argument("--samples-only", action="store_true",
+                           help="write each split's samples (which events each reads) to <data.prepared_dir>/tasks and stop: "
+                           "a CPU job can do this once, and a copy of the prepared data then carries them")
         if name == "baseline":
             p.add_argument("--models", default="logistic,gbm", help="comma-separated: logistic, gbm")
             p.add_argument("--gbm-features", type=int, default=2000,
@@ -205,6 +211,12 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "export-delphi":
         from modlehr.train.delphi import export
         export(cfg, args.out or f"{cfg.train.out_dir}_delphi_data", args.delphi_out or f"{cfg.train.out_dir}_delphi_code")
+    elif args.command == "finetune":
+        from modlehr.train.finetune import finetune, write_samples
+        if args.samples_only:
+            write_samples(cfg)
+        else:
+            finetune(cfg)
     elif args.command == "baseline":
         from modlehr.evaluate.baselines import run_baselines
         run_baselines(cfg, tuple(m.strip() for m in args.models.split(",") if m.strip()), args.gbm_features)

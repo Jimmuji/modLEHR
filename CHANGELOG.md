@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+Fine-tuning on one task
+- `modlehr finetune` learns a binary task from labels in the MEDS label format (an ACES task's output): a linear
+  classifier on the model's final state at each sample's last event at or before its prediction time, the model
+  from a pretrained checkpoint (`finetune.init`, trained whole or with `finetune.freeze` only the classifier) or
+  from scratch. Picks the step with the highest tuning AUROC; writes AUROC, AUPRC and predictions in the MEDS
+  prediction format. See docs/pipeline.md
+- `configs/tasks/mimic_iv`: 30-day readmission and 90-day mortality after a discharge alive as ACES tasks, the
+  MC2 and MC10 of Pollet & McDermott; on the official MIMIC-IV ETL they give the paper's held-out counts
+
 Code encodings: how a token becomes its vector
 - `model.code_encoding` picks it: `learned` (the default, unchanged), `text_frozen`, `text_init` and
   `text_sum` (from a text encoder's vector of each token's description), and `hierarchy` (plus learned
