@@ -1,12 +1,13 @@
 # Fine-tune the plain GPT of mimic_iv_gpt.yaml on death within 90 days of a discharge alive (MC10 in Pollet &
-# McDermott, arXiv 2609.18134; configs/tasks/mimic_iv/mortality_post_discharge_90d.yaml), from the labels ACES writes into
-# the official ETL's directory (scripts/fir/aces.sbatch on Fir). Same patients and split as the paper.
+# McDermott, arXiv 2609.18134; configs/tasks/mimic_iv/mortality_post_discharge_90d.yaml), from the labels ACES writes outside
+# the MEDS directory, whose files are part of the prepared data's fingerprint (scripts/fir/aces.sbatch on Fir).
+# Same patients and split as the paper.
 #   modlehr finetune --config configs/experiment/mimic_iv_gpt_mortality_post_discharge_90d.yaml --seed 1 \
 #     --set finetune.init=runs/mimic_iv_gpt_s1/best.pt
 # The supervised baseline (the same model from scratch): --set finetune.init=null and another train.out_dir.
 defaults: [mimic_iv_gpt.yaml]
 finetune:
-  labels: data/mimic_iv_meds/tasks/mortality_post_discharge_90d
+  labels: data/mimic_iv_tasks/mortality_post_discharge_90d
   init: runs/mimic_iv_gpt_s1/best.pt
 train:
   out_dir: runs/mimic_iv_gpt_mortality_post_discharge_90d
