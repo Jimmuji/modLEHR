@@ -10,6 +10,12 @@ Fine-tuning on one task
   prediction format. See docs/pipeline.md
 - `configs/tasks/mimic_iv`: 30-day readmission and 90-day mortality after a discharge alive as ACES tasks, the
   MC2 and MC10 of Pollet & McDermott; on the official MIMIC-IV ETL they give the paper's held-out counts
+- `configs/experiment/mimic_iv_gpt_discharge_unthinned*.yaml`: the plain MIMIC-IV GPT with the discharge codes
+  (where the patient went) and without thinning, pretrained and fine-tuned on both tasks
+
+Faster binning
+- `prepare` with `value_mode: binned` cuts the values in one pass over a shard's rows instead of one pass per
+  measurement code: the same tokens, 24 s → 0.06 s for 300,000 rows of 3,000 codes
 
 Code encodings: how a token becomes its vector
 - `model.code_encoding` picks it: `learned` (the default, unchanged), `text_frozen`, `text_init` and

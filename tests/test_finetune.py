@@ -120,6 +120,9 @@ def test_samples_only_writes_the_samples_into_the_prepared_data(tiny_config, tmp
 
 
 def test_finetune_configs_load():
-    for task in ("readmission_30d", "mortality_post_discharge_90d"):
-        cfg = load_config(f"configs/experiment/mimic_iv_gpt_{task}.yaml")
-        assert Path(cfg.finetune.labels).name == task and cfg.finetune.init and cfg.train.patience
+    for arm in ("mimic_iv_gpt", "mimic_iv_gpt_discharge_unthinned"):
+        pretrained = load_config(f"configs/experiment/{arm}.yaml")
+        for task in ("readmission_30d", "mortality_post_discharge_90d"):
+            cfg = load_config(f"configs/experiment/{arm}_{task}.yaml")
+            assert Path(cfg.finetune.labels).name == task and cfg.finetune.init and cfg.train.patience
+            assert cfg.data == pretrained.data  # finetune refuses a checkpoint trained on other data

@@ -36,10 +36,16 @@ def fit_bins(codes: pd.Series, values: pd.Series, n_bins: int) -> dict[str, list
 
 def apply_bins(codes: pd.Series, values: pd.Series, cuts: dict[str, list[float]]) -> pd.Series:
     """code//Q1 … code//Qn; the bare code where the value or the cut points are missing."""
-    out = codes.astype(str).copy()
-    for code, edges in cuts.items():
-        rows = (codes == code) & values.notna()
-        if rows.any():
-            b = np.searchsorted(np.asarray(edges), values[rows].to_numpy(), side="left") + 1
-            out[rows] = code + "//Q" + pd.Series(b, index=values[rows].index).astype(str)
-    return out
+    out = codes.astype(str).to_numpy(dtype=object, copy=True)
+    # one pass over the rows grouped by code, not one pass per code: unthinned shards have millions of rows
+    v = values.to_numpy(dtype=np.float64)
+    pos = np.flatnonzero(~np.isnan(v) & codes.isin(list(cuts)).to_numpy())
+    group, names = pd.factorize(out[pos])
+    order = np.argsort(group, kind="stable")
+    bounds = np.searchsorted(group[order], np.arange(len(names) + 1))
+    for g, code in enumerate(names):
+        rows = pos[order[bounds[g]:bounds[g + 1]]]
+        edges = np.asarray(cuts[code])
+        b = np.searchsorted(edges, v[rows], side="left")
+        out[rows] = np.array([f"{code}//Q{i}" for i in range(1, len(edges) + 2)], dtype=object)[b]
+    return pd.Series(out, index=codes.index)

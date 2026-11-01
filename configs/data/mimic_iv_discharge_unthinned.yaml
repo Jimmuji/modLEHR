@@ -1,0 +1,19 @@
+# Full MIMIC-IV (mimic_iv.yaml) with two things 30-day readmission needs and mimic_iv.yaml leaves out: the discharge
+# itself (HOSPITAL_DISCHARGE//<where to>: home, a facility, hospice, against advice), and every lab, ICU chart,
+# medication and procedure instead of the first of each code per quarter year, so the end of a stay and a stay soon
+# after another are seen. Tokens and value bins are otherwise mimic_iv.yaml's, so a difference from it is these two.
+defaults: [mimic_iv.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_discharge_unthinned
+  events:
+    - {name: sex, role: static, prefix: "GENDER//"}
+    - {name: death, role: target, codes: ["MEDS_DEATH"]}
+    - {name: diagnoses, role: target, prefix: "DIAGNOSIS//ICD//"}
+    - {name: hospital_labs, role: measurement, prefix: "LAB//RESULT//"}
+    - {name: icu_charts, role: measurement, prefix: "LAB//", exclude_regex: "SPECIMEN_COLLECTED|^LAB//RESULT//"}
+    - {name: medications, role: context, prefix: "MEDICATION//START//"}
+    - {name: procedures, role: context, prefix: "PROCEDURE//"}
+    - {name: admissions, role: context, prefix: "HOSPITAL_ADMISSION//"}
+    - {name: discharges, role: context, prefix: "HOSPITAL_DISCHARGE//"}
+    - {name: icu_stays, role: context, prefix: "ICU_ADMISSION//"}
+    - {name: emergency, role: context, codes: ["ED_REGISTRATION"]}
