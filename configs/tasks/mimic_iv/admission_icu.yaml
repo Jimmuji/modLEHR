@@ -1,0 +1,35 @@
+# ACES task: an ICU admission during the hospital stay, predicted at the admission (ETHOS-ARES's ICU admission, Renc
+# et al., arXiv 2502.06124: the first of ICU admission, discharge or death after the admission's tokens is an ICU
+# admission; a death before any ICU stay is a negative, as in its label dump). Admissions straight into an ICU, with
+# the ICU admission at the admission time itself, are left out: an input that ends at the admission time already
+# holds that ICU admission (ETHOS cuts its timeline between tokens of the same time instead).
+predicates:
+  hospital_admission:
+    code: {regex: "^HOSPITAL_ADMISSION//.*"}
+  hospital_discharge:
+    code: {regex: "^HOSPITAL_DISCHARGE//.*"}
+  icu_admission:
+    code: {regex: "^ICU_ADMISSION//.*"}
+
+trigger: hospital_admission
+
+windows:
+  input:
+    start: null
+    end: trigger
+    start_inclusive: True
+    end_inclusive: True
+    index_timestamp: end
+  at_admission:
+    start: input.end
+    end: start + 1 second
+    start_inclusive: True
+    end_inclusive: False
+    has:
+      icu_admission: (None, 0)
+  target:
+    start: input.end
+    end: start -> hospital_discharge
+    start_inclusive: False
+    end_inclusive: True
+    label: icu_admission

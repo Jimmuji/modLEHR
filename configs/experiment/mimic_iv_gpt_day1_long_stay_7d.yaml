@@ -1,0 +1,21 @@
+# Fine-tune the plain GPT of mimic_iv_gpt.yaml on a hospital stay of 7 days or more, predicted at 23:59 of the
+# admission day (PORTER's long length of stay, Guo et al., arXiv 2606.24102; scripts/porter_tasks.py), from the
+# labels scripts/fir/aces.sbatch writes outside the MEDS directory. Same patients and split as our other MIMIC-IV
+# runs (the official ETL's), not the paper's.
+#   modlehr finetune --config configs/experiment/mimic_iv_gpt_day1_long_stay_7d.yaml --seed 1 \
+#     --set finetune.init=runs/mimic_iv_gpt_s1/best.pt
+# A linear probe of the pretrained model, as PORTER scores its tasks: --set finetune.freeze=true and another
+# train.out_dir (scripts/fir/finetune.sh ARMS=probe).
+defaults: [mimic_iv_gpt.yaml]
+finetune:
+  labels: data/mimic_iv_tasks/day1_long_stay_7d
+  init: runs/mimic_iv_gpt_s1/best.pt
+train:
+  out_dir: runs/mimic_iv_gpt_day1_long_stay_7d
+  batch_size: 64
+  lr: 1.0e-4
+  min_lr: 1.0e-5
+  warmup: 500
+  steps: 20000
+  eval_every: 1000      # tuning AUROC over every tuning sample
+  patience: 5

@@ -1,0 +1,38 @@
+# ACES task: a hospital stay of 10 days or more, predicted at the admission (ETHOS-ARES's prolonged stay, Renc et al.,
+# arXiv 2502.06124: the first discharge or death token comes 10 days or more after the admission). Same samples,
+# in the same order, as admission_hospital_mortality.yaml (the stay window drops an admission without a later
+# discharge in both). ACES labels only by an event in a window, so its label here is the opposite, a discharge or
+# death within 10 days, and scripts/fir/aces.sbatch flips it (metadata.invert_label).
+predicates:
+  hospital_admission:
+    code: {regex: "^HOSPITAL_ADMISSION//.*"}
+  hospital_discharge:
+    code: {regex: "^HOSPITAL_DISCHARGE//.*"}
+  death_record:
+    code: MEDS_DEATH
+  discharge_or_death:
+    expr: or(hospital_discharge, death_record)
+
+trigger: hospital_admission
+
+windows:
+  input:
+    start: null
+    end: trigger
+    start_inclusive: True
+    end_inclusive: True
+    index_timestamp: end
+  stay:
+    start: input.end
+    end: start -> hospital_discharge
+    start_inclusive: False
+    end_inclusive: True
+  target:
+    start: input.end
+    end: start + 10 days
+    start_inclusive: False
+    end_inclusive: False
+    label: discharge_or_death
+
+metadata:
+  invert_label: true

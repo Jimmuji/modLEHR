@@ -1,0 +1,34 @@
+# ACES task: death during the hospital stay, predicted at the admission (ETHOS-ARES's hospital mortality, Renc et
+# al., arXiv 2502.06124: its timeline ends on the admission's tokens, and the label is a death token before the
+# discharge token), on the official MIMIC_IV_MEDS ETL (data/mimic_iv_meds). One sample per hospital admission; the
+# input is everything up to and including the admission time (the admission code, insurance and earlier stays; the
+# stay's diagnoses are timed at discharge, so none of them). A death is the discharge to DIED or a death record up to
+# the discharge, as ETHOS counts any death token before the discharge. ETHOS also reads the ED module (triage,
+# ED vitals and medications), which this ETL does not have.
+predicates:
+  hospital_admission:
+    code: {regex: "^HOSPITAL_ADMISSION//.*"}
+  hospital_discharge:
+    code: {regex: "^HOSPITAL_DISCHARGE//.*"}
+  died_in_hospital:
+    code: HOSPITAL_DISCHARGE//DIED
+  death_record:
+    code: MEDS_DEATH
+  death:
+    expr: or(died_in_hospital, death_record)
+
+trigger: hospital_admission
+
+windows:
+  input:
+    start: null
+    end: trigger
+    start_inclusive: True
+    end_inclusive: True
+    index_timestamp: end
+  target:
+    start: input.end
+    end: start -> hospital_discharge
+    start_inclusive: False
+    end_inclusive: True
+    label: death

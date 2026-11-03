@@ -1,0 +1,21 @@
+# Fine-tune the plain GPT of mimic_iv_gpt.yaml on an ICU admission during the hospital stay, predicted at the
+# admission (ETHOS-ARES's ICU admission, Renc et al., arXiv 2502.06124; configs/tasks/mimic_iv/admission_icu.yaml),
+# from the labels scripts/fir/aces.sbatch writes outside the MEDS directory. Same patients and split as our other
+# MIMIC-IV runs (the official ETL's), not the paper's.
+#   modlehr finetune --config configs/experiment/mimic_iv_gpt_admission_icu.yaml --seed 1 \
+#     --set finetune.init=runs/mimic_iv_gpt_s1/best.pt
+# A linear probe of the pretrained model, as PORTER scores its tasks: --set finetune.freeze=true and another
+# train.out_dir (scripts/fir/finetune.sh ARMS=probe).
+defaults: [mimic_iv_gpt.yaml]
+finetune:
+  labels: data/mimic_iv_tasks/admission_icu
+  init: runs/mimic_iv_gpt_s1/best.pt
+train:
+  out_dir: runs/mimic_iv_gpt_admission_icu
+  batch_size: 64
+  lr: 1.0e-4
+  min_lr: 1.0e-5
+  warmup: 500
+  steps: 20000
+  eval_every: 1000      # tuning AUROC over every tuning sample
+  patience: 5
