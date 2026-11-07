@@ -8,8 +8,8 @@ the same patients, split and task labels as our GPT and MEDS-Tab.
       have; only the columns ehr-fm reads are kept. A subject without MEDS_BIRTH keeps no timeless events (ehr-fm
       skips such subjects anyway).
   python scripts/ehrfm_inputs.py cohorts <meds_dir> <labels_dir> <out_dir>
-      <out_dir>/pretraining.parquet: one row per train and tuning subject (id, index_t = its last event, split
-      train or validation), as PORTER's pretraining cohort. <out_dir>/<group>.parquet: the labels of the tasks
+      <out_dir>/pretraining.parquet: one row per train and tuning subject (id, index_t = its last event before
+      2262, split train or validation), as PORTER's pretraining cohort. <out_dir>/<group>.parquet: the labels of the tasks
       that list the same samples (id, index_t = prediction time, split train / val / test for our train / tuning /
       held_out, one label_<task> column each), as PORTER's task cohorts, for its linear probe.
 
@@ -20,6 +20,7 @@ import os
 import sys
 import warnings
 from concurrent.futures import ProcessPoolExecutor
+from datetime import datetime
 from pathlib import Path
 
 import polars as pl
@@ -32,6 +33,9 @@ GROUPS = {
     "predischarge": ("predischarge_readmission_30d",),
 }
 SPLITS = {"train": "train", "tuning": "val", "held_out": "test"}
+# ehr-fm stores index times in nanoseconds (up to 2262), and some events in this ETL are dated far later (year 5117
+# and the like): a subject's pretraining index time is its last event before this.
+LATEST = datetime(2262, 1, 1)
 
 
 def copy_shard(args: tuple[Path, Path]) -> dict[str, int]:
@@ -67,9 +71,13 @@ def meds(src: Path, dst: Path) -> None:
 def cohorts(meds_dir: Path, labels: Path, out: Path) -> None:
     out.mkdir(parents=True, exist_ok=True)
     splits = pl.read_parquet(meds_dir / "metadata" / "subject_splits.parquet").select("subject_id", "split")
+    late = pl.col("time") >= LATEST
     last = (pl.scan_parquet(meds_dir / "data" / "*" / "*.parquet").group_by("subject_id")
-            .agg(pl.col("time").max().alias("index_t"), (pl.col("code") == "MEDS_BIRTH").any().alias("birth"))
+            .agg(pl.col("time").filter(~late).max().alias("index_t"), late.sum().alias("late"),
+                 (pl.col("code") == "MEDS_BIRTH").any().alias("birth"))
             .collect())
+    print(f"{int(last['late'].sum()):,} events of {int((last['late'] > 0).sum()):,} subjects dated {LATEST.year} or "
+          "later are left out of pretraining")
     pre = (last.join(splits, on="subject_id").filter(pl.col("split").is_in(["train", "tuning"]))
            .select(pl.col("subject_id").cast(pl.Int64).alias("id"), pl.col("index_t").cast(pl.Datetime("us")),
                    pl.col("split").replace({"tuning": "validation"})).sort("id"))
