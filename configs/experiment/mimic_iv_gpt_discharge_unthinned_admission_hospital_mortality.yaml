@@ -1,0 +1,8 @@
+# mimic_iv_gpt_admission_hospital_mortality.yaml on the data of mimic_iv_gpt_discharge_unthinned.yaml
+# (discharge codes, no thinning), from that GPT. scripts/fir/finetune.sh with
+# PRETRAINED=mimic_iv_gpt_discharge_unthinned.
+defaults: [mimic_iv_gpt_admission_hospital_mortality.yaml, ../data/mimic_iv_discharge_unthinned.yaml]
+finetune:
+  init: runs/mimic_iv_gpt_discharge_unthinned_s1/best.pt
+train:
+  out_dir: runs/mimic_iv_gpt_discharge_unthinned_admission_hospital_mortality
