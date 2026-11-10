@@ -137,7 +137,7 @@ numbers.
 - time encoding: `sinusoidal_age`, `none`
 - value encoding: `none`, `mlp`
 - text encoding: `none`, `hashed_bag`
-- head: `competing_risk`
+- head: `competing_risk`, `next_token`
 
 The input head takes an optional `extra` tensor added to each event's embedding; that is where
 other modalities (images) plug in later.

@@ -44,6 +44,7 @@ import pandas as pd
 import torch
 from sklearn.metrics import roc_auc_score
 
+from modlehr import registry
 from modlehr.config import Config, ModelConfig
 from modlehr.evaluate.task import history_before, landmark_task, split_first_ages, summarize
 from modlehr.model.delphi import DelphiModel, is_delphi_checkpoint
@@ -53,6 +54,12 @@ from modlehr.prepare.dataset import PreparedSplit, collate, open_split
 from modlehr.prepare.vocabulary import NO_EVENT, Vocabulary
 from modlehr.track import Tracker
 from modlehr.train.loop import pick_device, to_device
+
+
+def gives_risk(model_cfg: ModelConfig) -> bool:
+    """Whether evaluate can score a model of this config: its head gives each target's risk within a horizon
+    (Delphi-2M's does; a head that only pretrains, such as next_token, does not)."""
+    return model_cfg.architecture == "delphi2m" or hasattr(registry.get("head", model_cfg.head), "risk")
 
 
 def load_model(checkpoint: str | Path, prepared_dir: Path, device: torch.device) -> tuple[ModLEHR, Vocabulary]:
@@ -119,7 +126,7 @@ def likelihood(model: ModLEHR, split: PreparedSplit, batch_size: int, device: to
         n = int(batch["loss_mask"].sum())
         if not n:
             continue
-        nll, parts = model.head.loss(model(batch), batch.get("next_set", batch["next_target"]), batch["dt"], batch["loss_mask"])
+        nll, parts = model.head.batch_loss(model(batch), batch)
         for key, value in {"nll": float(nll), **parts}.items():
             sums[key] = sums.get(key, 0.0) + value * n
         count += n
@@ -196,6 +203,10 @@ def evaluate(cfg: Config, checkpoint: str | Path, out_csv: str | Path | None = N
     prepared = Path(cfg.data.prepared_dir)
     device = pick_device(cfg.train.device)
     model, vocab = load_model(checkpoint, prepared, device)
+    if not hasattr(model.head, "risk"):
+        raise ValueError(f"{checkpoint} was trained with model.head: {model.cfg.head}, which gives no risk of a target "
+                         "within a horizon, so there is nothing for evaluate to score; score it on a task with "
+                         "`modlehr finetune`")
     split = open_split(prepared, cfg.evaluate.split)
     first = split_first_ages(split, vocab)
     H, min_cases = cfg.evaluate.horizon_years, cfg.evaluate.min_cases

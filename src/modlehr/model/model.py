@@ -72,7 +72,7 @@ class ModLEHR(nn.Module):
         self.input_head = InputHead(n_tokens, cfg, n_text_buckets, code_inputs)
         self.blocks = nn.ModuleList(Block(cfg) for _ in range(cfg.n_layers))
         self.norm = registry.build("norm", cfg.norm, d_model=cfg.d_model)
-        self.head = registry.build("head", cfg.head, d_model=cfg.d_model, n_targets=n_targets)
+        self.head = registry.build("head", cfg.head, d_model=cfg.d_model, n_tokens=n_tokens, n_targets=n_targets)
         self.apply(self._init)
 
     @staticmethod
@@ -102,7 +102,7 @@ class ModLEHR(nn.Module):
 
     def loss(self, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, dict]:
         out = self(batch)
-        nll, parts = self.head.loss(out, batch.get("next_set", batch["next_target"]), batch["dt"], batch["loss_mask"])
+        nll, parts = self.head.batch_loss(out, batch)
         aux = [mod.aux_weight * mod.aux_loss for mod in self.modules() if hasattr(mod, "aux_loss")]
         if aux and self.training:  # e.g. the load-balancing loss of a mixture of experts
             extra = torch.stack(aux).sum()

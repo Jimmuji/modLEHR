@@ -1,0 +1,8 @@
+# The plain GPT of mimic_iv_gpt.yaml (same data, size, context and schedule) pretrained on every next event
+# (configs/model/gpt_next_token.yaml) in place of the next first diagnosis or death. MIMIC-IV diagnoses are timed
+# at discharge, so mimic_iv_gpt's pretraining says nothing about what happens during a stay, which five of the six
+# ETHOS-ARES and PORTER tasks ask. Pretrained for the fine-tuning configs mimic_iv_gpt_next_token_<task>.yaml:
+#   modlehr train --config configs/experiment/mimic_iv_gpt_next_token.yaml --seed 1
+defaults: [mimic_iv_gpt.yaml, ../model/gpt_next_token.yaml]
+train:
+  out_dir: runs/mimic_iv_gpt_next_token

@@ -6,7 +6,7 @@ import torch
 
 from modlehr import registry
 from modlehr.config import ModelConfig
-from modlehr.model.heads import CompetingRiskHead
+from modlehr.model.heads import CompetingRiskHead, NextTokenHead
 from modlehr.model.model import ModLEHR
 
 
@@ -61,6 +61,39 @@ def test_competing_risk_loss_matches_formula():
     event = -math.log(0.3) + 0.4 * 2.0  # target 1 after 2 years
     censored = 0.4 * 4.0  # nothing for 4 years
     assert abs(float(loss) - (event + censored) / 2) < 1e-5
+
+
+def test_next_token_loss_is_the_cross_entropy_of_each_following_token():
+    logits = torch.randn(2, 4, 6, generator=torch.Generator().manual_seed(0))
+    tokens = torch.tensor([[3, 1, 5, 2], [4, 2, 0, 0]])  # the second row is padded after two events
+    loss, parts = NextTokenHead.batch_loss(logits, {"tokens": tokens})
+    logp = torch.log_softmax(logits, dim=-1)
+    pairs = [(0, 0, 1), (0, 1, 5), (0, 2, 2), (1, 0, 2)]  # (row, position, the token after it)
+    assert torch.allclose(loss, -sum(logp[i, t, k] for i, t, k in pairs) / 4, atol=1e-6)
+    assert math.isclose(parts["accuracy"], sum(int(logits[i, t].argmax()) == k for i, t, k in pairs) / 4)
+    moved = logits.clone()
+    moved[0, 3] += 5.0  # a row's last event and padding predict nothing
+    moved[1, 1:] -= 5.0
+    assert torch.equal(NextTokenHead.batch_loss(moved, {"tokens": tokens})[0], loss)
+
+
+def test_next_token_model_learns_a_repeating_record():
+    torch.manual_seed(0)
+    m = model(head="next_token").train()
+    assert m(batch()).shape == (2, 10, 20)  # a logit per token, not per target
+    tokens = torch.tensor([[1, 2, 3, 4] * 4] * 2)
+    x = {"tokens": tokens, "ages": torch.arange(16.0).repeat(2, 1), "values": torch.zeros(2, 16),
+         "has_value": torch.zeros(2, 16, dtype=torch.bool)}
+    opt = torch.optim.Adam(m.parameters(), lr=3e-3)
+    first = None
+    for _ in range(150):
+        loss, parts = m.loss(x)
+        first = first if first is not None else float(loss.detach())
+        opt.zero_grad()
+        loss.backward()
+        opt.step()
+    assert set(parts) == {"accuracy"} and parts["accuracy"] == 1.0
+    assert float(loss.detach()) < 0.1 and math.isclose(first, math.log(20), abs_tol=0.2)  # starts at a uniform guess
 
 
 def test_risk_is_a_probability():

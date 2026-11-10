@@ -77,7 +77,7 @@ order whatever the sharding. `modlehr info` prints a summary, including the most
 
 Each step draws `batch_size` random patients and a random window of at most `max_len` events
 from each, and minimizes the competing-risks negative log-likelihood (see
-[the model](model.md)). Every `eval_every` steps it scores the same fixed tuning windows and
+[the model](model.md)); with `model.head: next_token`, the cross-entropy of every next event. Every `eval_every` steps it scores the same fixed tuning windows and
 keeps the checkpoint with the lowest tuning loss. The run directory gets `config.yaml` (the full
 resolved config), `log.jsonl` (one line per check), `best.pt` and `last.pt`.
 

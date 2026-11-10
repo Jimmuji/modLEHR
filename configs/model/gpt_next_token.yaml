@@ -1,0 +1,7 @@
+# Plain GPT pretrained on every next event: the head gives a logit per token and the loss is the cross-entropy of
+# the token that follows each event, whatever its role (a lab result, a drug, an ICU admission, a diagnosis), as
+# ETHOS, PORTER and MEDS-EIC-AR pretrain. The default head, competing_risk, predicts the targets only (first
+# diagnoses and death) and when. This head gives no risk within a horizon, so `modlehr evaluate` does not apply:
+# score the model on a task with `modlehr finetune`.
+model:
+  head: next_token

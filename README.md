@@ -100,7 +100,7 @@ What each one reads and writes: [docs/pipeline.md](docs/pipeline.md).
 | `code_encoding` | `learned`, `text_frozen`, `text_init`, `text_sum`, `hierarchy` |
 | `value_encoding` | `none`, `mlp` |
 | `text_encoding` | `none`, `hashed_bag` |
-| `head` | `competing_risk` |
+| `head` | `competing_risk`, `next_token` |
 | `architecture` | `modlehr` (the parts above), `delphi2m` (Delphi-2M's own model and training) |
 | `target_grouping` | `identity`, `icd10_3char`, `icd_3char`, `icd_gems`, `phecode` |
 

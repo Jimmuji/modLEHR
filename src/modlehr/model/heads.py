@@ -8,19 +8,27 @@ competing-risks likelihood, with censoring at the end of follow-up handled direc
 at the same time (a set S, e.g. the diagnoses of one discharge) have likelihood
 prod_{k in S} lambda_k * exp(-Lambda * dt), the same hazards observed at a recorded resolution;
 with one target it is the formula above.
+
+next_token: one logit per token, trained on which event comes next in the record, whatever its role
+(a lab result, a drug, an ICU admission, a diagnosis), as ETHOS, PORTER and MEDS-EIC-AR pretrain. It
+predicts no waiting time and gives no risk within a horizon, so a model trained with it is scored on a
+task with `modlehr finetune`, not with `modlehr evaluate`.
+
+A head is built with d_model, n_tokens and n_targets and sizes its output by the one it predicts.
 """
 
 from __future__ import annotations
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from modlehr.registry import register
 
 
 @register("head", "competing_risk")
 class CompetingRiskHead(nn.Module):
-    def __init__(self, d_model: int, n_targets: int):
+    def __init__(self, d_model: int, n_targets: int, n_tokens: int | None = None):
         super().__init__()
         self.proj = nn.Linear(d_model, n_targets)
 
@@ -48,6 +56,11 @@ class CompetingRiskHead(nn.Module):
         n = m.sum().clamp(min=1.0)
         nll = ((nll_event + nll_time) * m).sum() / n
         return nll, {"nll_event": float((nll_event * m).sum().detach() / n), "nll_time": float((nll_time * m).sum().detach() / n)}
+
+    @classmethod
+    def batch_loss(cls, log_rates: torch.Tensor, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, dict]:
+        """loss on a batch as the dataset makes it, with every target of the next target time when it has them."""
+        return cls.loss(log_rates, batch.get("next_set", batch["next_target"]), batch["dt"], batch["loss_mask"])
 
     @staticmethod
     def risk(log_rates: torch.Tensor, horizon_years: float, kind: str = "marginal") -> torch.Tensor:
@@ -93,3 +106,25 @@ class CompetingRiskHead(nn.Module):
         k = torch.multinomial(torch.softmax(log_rates, dim=-1), 1, generator=generator).squeeze(-1)
         return k, wait
 
+
+@register("head", "next_token")
+class NextTokenHead(nn.Module):
+    def __init__(self, d_model: int, n_tokens: int, n_targets: int | None = None):
+        super().__init__()
+        self.proj = nn.Linear(d_model, n_tokens)
+
+    def forward(self, h: torch.Tensor) -> torch.Tensor:
+        return self.proj(h)
+
+    @staticmethod
+    def batch_loss(logits: torch.Tensor, batch: dict[str, torch.Tensor]) -> tuple[torch.Tensor, dict]:
+        """Mean cross-entropy of the token that follows each event in its row. The last event of a row has
+        none in the window, and padding (token 0) is never a next token, so neither is counted."""
+        tokens = batch["tokens"]
+        following = torch.cat([tokens[:, 1:], tokens.new_zeros(tokens.shape[0], 1)], dim=1)  # 0: nothing follows
+        n = (following != 0).sum().clamp(min=1)
+        nll = F.cross_entropy(logits.reshape(-1, logits.shape[-1]).float(), following.reshape(-1), ignore_index=0,
+                              reduction="sum") / n
+        with torch.no_grad():
+            right = ((logits.argmax(dim=-1) == following) & (following != 0)).sum()
+        return nll, {"accuracy": float(right / n)}

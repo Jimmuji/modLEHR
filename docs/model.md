@@ -26,6 +26,15 @@ Rates start at each target's training-set rate. The risk of k within H years, th
 by, is 1 − exp(−λ_k H) (`evaluate.risk: marginal`); `next_event` gives (λ_k / Λ)(1 − exp(−Λ H)),
 the probability that k is the next target.
 
+**Output head (`next_token`).** One logit per token; the loss is the cross-entropy of the token
+that follows each event in its window, whatever its role: a lab result, a drug, an ICU admission,
+a diagnosis. This is how ETHOS, PORTER and MEDS-EIC-AR pretrain. `competing_risk` predicts the
+targets only, and on data such as MIMIC-IV, where diagnoses are timed at discharge, that says
+nothing about what happens during a stay. `next_token` predicts no waiting time and gives no risk
+within a horizon, so `modlehr evaluate` does not apply: the model is pretrained with
+`modlehr train` and scored on a task with `modlehr finetune`, which reads the model's final
+states and leaves the head out (`configs/model/gpt_next_token.yaml`).
+
 Every part is registered by name and picked in `configs/model/`:
 
 | Kind | Registered | Notes |
@@ -37,7 +46,7 @@ Every part is registered by name and picked in `configs/model/`:
 | `code_encoding` | `learned`, `text_frozen`, `text_init`, `text_sum`, `hierarchy` | How a token becomes its vector, below |
 | `value_encoding` | `none`, `mlp` | `mlp` reads values kept with `value_mode: continuous` |
 | `text_encoding` | `none`, `hashed_bag` | `hashed_bag` averages learned embeddings of a note's words, hashed into 65,536 buckets with no external tokenizer |
-| `head` | `competing_risk` | |
+| `head` | `competing_risk`, `next_token` | the risk of each target and when; every next event, for pretraining |
 | `target_grouping` | `identity`, `icd10_3char`, `icd_3char`, `icd_gems`, `phecode` | `icd_3char` handles ICD-9 and ICD-10 mixed, as in MIMIC-IV, keeping ICD-9 categories apart; `icd_gems` maps ICD-9 through the CMS General Equivalence Mappings first, so both coding eras share one target set; `phecode` maps both to phecodes (PheWAS catalog). The last two read public mapping files named in `data.target_grouping_options` |
 
 ### Code encodings

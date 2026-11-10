@@ -132,7 +132,7 @@ the `description_regex` keeps only disorders as targets.
 | `norm` | `layernorm` | `layernorm`, `rmsnorm` |
 | `ffn` | `gelu_mlp` | `gelu_mlp` (hidden width 4 x `d_model`), `swiglu` (gated, hidden width 8/3 x `d_model`), `moe` (mixture of experts) |
 | `ffn_options` | `{}` | Passed to the feed-forward part; see below |
-| `head` | `competing_risk` | `competing_risk` |
+| `head` | `competing_risk` | `competing_risk` (the targets and when), `next_token` (every next event; for pretraining, scored with `modlehr finetune`) |
 
 `attention_options` that every attention accepts:
 

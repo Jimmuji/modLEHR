@@ -79,6 +79,37 @@ def test_finetune_scores_every_sample(pretrained, tmp_path, start):
             assert not torch.equal(tuned[f"model.{name}"], before[name])
 
 
+def test_a_next_token_model_is_fine_tuned_but_not_evaluated(tiny_config, tmp_path):
+    """model.head: next_token pretrains on every next event. Fine-tuning reads its states like any model's;
+    evaluate has no target risk to score, and `modlehr run` trains it and leaves evaluate out."""
+    from modlehr.cli import main
+    from modlehr.evaluate.run import evaluate
+    tiny_config.model.head = "next_token"
+    path = tmp_path / "next_token.yaml"
+    path.write_text(yaml.safe_dump(tiny_config.to_dict()))
+    main(["run", "--config", str(path)])
+    out = Path(tiny_config.train.out_dir)
+    checkpoint = out / "best.pt"
+    log = [json.loads(line) for line in (out / "log.jsonl").read_text().splitlines()]
+    assert checkpoint.exists() and not (out / "evaluate.json").exists()
+    assert log[-1]["tune_loss"] < log[0]["tune_loss"] and 0 <= log[-1]["accuracy"] <= 1
+    weights = torch.load(checkpoint, weights_only=False)["model"]
+    vocab = json.loads((Path(tiny_config.data.prepared_dir) / "vocab.json").read_text())
+    assert weights["head.proj.weight"].shape[0] == len(vocab["tokens"]) > len(vocab["targets"])
+    with pytest.raises(ValueError, match="modlehr finetune"):
+        evaluate(tiny_config, checkpoint, log=QUIET)
+
+    cfg = copy.deepcopy(tiny_config)
+    cfg.finetune.labels = str(write_labels(Path(cfg.data.meds_dir), tmp_path / "labels" / "disease_a_by_60", 60.0))
+    cfg.finetune.init = str(checkpoint)
+    cfg.train.out_dir, cfg.train.steps, cfg.train.lr, cfg.train.eval_every = str(tmp_path / "ft"), 600, 3e-3, 50
+    result = finetune(cfg, log=QUIET)
+    assert result["held_out"]["auroc"] > 0.9
+    tuned = torch.load(Path(cfg.train.out_dir) / "best.pt", weights_only=False)["classifier"]
+    assert torch.equal(tuned["model.head.proj.weight"], weights["head.proj.weight"])  # the pretraining head is not trained
+    assert not torch.equal(tuned["model.blocks.0.attn.q.weight"], weights["blocks.0.attn.q.weight"])
+
+
 def test_input_stops_before_a_later_event_with_the_same_float32_age(tmp_path):
     """An event 30 seconds after the prediction time gets its float32 age at 80, so that sample reads only the
     events before age 80; an event a day later leaves the events at the prediction time in."""
@@ -119,10 +150,16 @@ def test_samples_only_writes_the_samples_into_the_prepared_data(tiny_config, tmp
     assert not Path(tiny_config.train.out_dir).exists()  # nothing trained
 
 
+TASKS = ("readmission_30d", "mortality_post_discharge_90d", "admission_hospital_mortality", "admission_icu",
+         "admission_long_stay_10d", "day1_hospital_mortality", "day1_long_stay_7d", "predischarge_readmission_30d")
+
+
 def test_finetune_configs_load():
-    for arm in ("mimic_iv_gpt", "mimic_iv_gpt_discharge_unthinned"):
+    for arm in ("mimic_iv_gpt", "mimic_iv_gpt_discharge_unthinned", "mimic_iv_gpt_next_token"):
         pretrained = load_config(f"configs/experiment/{arm}.yaml")
-        for task in ("readmission_30d", "mortality_post_discharge_90d"):
+        for task in TASKS:
             cfg = load_config(f"configs/experiment/{arm}_{task}.yaml")
-            assert Path(cfg.finetune.labels).name == task and cfg.finetune.init and cfg.train.patience
+            assert Path(cfg.finetune.labels).name == task and cfg.train.patience
+            assert cfg.finetune.init == f"runs/{arm}_s1/best.pt" and cfg.train.out_dir == f"runs/{arm}_{task}"
             assert cfg.data == pretrained.data  # finetune refuses a checkpoint trained on other data
+            assert cfg.model == pretrained.model  # from scratch (finetune.init: null) it is the same model

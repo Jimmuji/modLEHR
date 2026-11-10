@@ -221,7 +221,7 @@ def main(argv: list[str] | None = None) -> None:
         from modlehr.evaluate.baselines import run_baselines
         run_baselines(cfg, tuple(m.strip() for m in args.models.split(",") if m.strip()), args.gbm_features)
     elif args.command == "run":
-        from modlehr.evaluate.run import evaluate
+        from modlehr.evaluate.run import evaluate, gives_risk
         from modlehr.prepare.pipeline import is_current, run_prepare
         from modlehr.train.loop import train
         if args.force_prepare or not is_current(cfg.data):
@@ -229,7 +229,10 @@ def main(argv: list[str] | None = None) -> None:
         else:
             print(f"[run] {cfg.data.prepared_dir} matches the data config; skipping prepare")
         best = train(cfg, resume=args.resume, stop_after=args.stop_after)
-        if args.stop_after is None or args.stop_after >= cfg.train.steps - 1:
+        if not gives_risk(cfg.model):
+            print(f"[run] model.head: {cfg.model.head} gives no risk within a horizon; skipping evaluate "
+                  "(score the model on a task with `modlehr finetune`)")
+        elif args.stop_after is None or args.stop_after >= cfg.train.steps - 1:
             evaluate(cfg, best)
     elif args.command == "delphi":
         from modlehr.evaluate.delphi import delphi_auc

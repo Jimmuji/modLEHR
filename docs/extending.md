@@ -18,7 +18,7 @@ return:
 | `code_encoding` | `f(n_tokens, d_model, vectors, ancestors)` | `enc(tokens)` | `[B, T, d_model]`, the token embedding |
 | `value_encoding` | `f(d_model)` | `enc(values, has_value)` | `[B, T, d_model]`, added to the token embedding |
 | `text_encoding` | `f(d_model, n_buckets)` | `enc(word_ids, starts)` | `[n_notes, d_model]`, added to each note's event, or `None` |
-| `head` | `f(d_model, n_targets)` | `head(h)`, plus `loss`, `risk`, `sample` (below) | log-rates `[B, T, n_targets]` for `competing_risk` |
+| `head` | `f(d_model, n_tokens, n_targets)` | `head(h)`, plus `batch_loss`, `risk`, `sample` (below) | log-rates `[B, T, n_targets]` for `competing_risk`; logits `[B, T, n_tokens]` for `next_token` |
 | `target_grouping` | (a plain function) | `group(code)` | the target name for a MEDS code |
 
 Shapes: `x` is `[B, T, d_model]`; `ages` is `[B, T]` in years; `mask` is `[B, 1, T, T]`, `True`
@@ -99,20 +99,27 @@ Then `--set model.time_encoding=log_age`.
 
 ### A new head
 
-A head replaces the output layer and the loss. The training loop, evaluation and sampling call
-four methods, so a new head has to provide all of them:
+A head replaces the output layer and the loss. It is built with `d_model`, `n_tokens` and
+`n_targets` and sizes its output by the one it predicts. The training loop, evaluation and sampling
+call four methods:
 
 | Method | Used by | Must return |
 |---|---|---|
 | `forward(h)` | everything | the head's output for every event |
-| `loss(out, next_target, dt, mask)` | training, `evaluate` likelihood | `(mean NLL over masked events, dict of named parts)` |
+| `batch_loss(out, batch)` | training, `evaluate` likelihood | `(mean loss over the events that predict something, dict of named parts)` |
 | `risk(out, horizon_years, kind)` | `evaluate` | `[..., n_targets]` probability of each target within the horizon; `kind` is `evaluate.risk` (`marginal` or `next_event`) |
 | `sample(out, generator)` | `generate` | `(target index, years until it)` |
 
-`next_target` is `[B, T]` (one target, `-1` for a censored stretch) or `[B, T, K]` (every target
-recorded at the next target time, `-1` padded, all `-1` for a censored stretch); training passes
-the second when the prepared data has it. `dt` is the years until the next target, or until the
-end of follow-up. Two methods are optional: `init_rates(counts, exposure_years)` is called before
+A head that only pretrains needs the first two. `next_token` is one: it has no `risk`, so
+`modlehr evaluate` refuses its checkpoints and `modlehr run` trains without evaluating, and the
+model is scored on a task with `modlehr finetune`, which does not use the head.
+
+`batch` is a training batch (`modlehr/prepare/dataset.py`, `collate`): `tokens` `[B, T]` (0 is
+padding), `ages`, `values`, `has_value`, and the labels prepare wrote. `competing_risk` reads
+`next_target`, `[B, T]` (one target, `-1` for a censored stretch), or `next_set`, `[B, T, K]` (every
+target recorded at the next target time, `-1` padded, all `-1` for a censored stretch) when the
+prepared data has it; `dt`, the years until the next target or until the end of follow-up; and
+`loss_mask`. `next_token` reads only `tokens`. Two methods are optional: `init_rates(counts, exposure_years)` is called before
 training with the training-set count of each target and the total years in training, and
 `observed_risk(out, horizon_years, death)`, the probability that each target is recorded within
 the horizon (before death, the target index `death` or `None`), is what calibration compares with

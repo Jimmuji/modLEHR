@@ -1,0 +1,7 @@
+# mimic_iv_gpt_admission_icu.yaml from the GPT pretrained on every next event
+# (mimic_iv_gpt_next_token.yaml). scripts/fir/finetune.sh with PRETRAINED=mimic_iv_gpt_next_token.
+defaults: [mimic_iv_gpt_admission_icu.yaml, ../model/gpt_next_token.yaml]
+finetune:
+  init: runs/mimic_iv_gpt_next_token_s1/best.pt
+train:
+  out_dir: runs/mimic_iv_gpt_next_token_admission_icu
