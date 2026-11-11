@@ -1,0 +1,14 @@
+# Shared by every config in this directory: the next_token GPT of mimic_iv_gpt_next_token.yaml (full MIMIC-IV,
+# 6 x 256, 1,024 events, 20,000 steps), two batches of 32 windows per step (fits a 20G slice), one wandb group,
+# and next-event scoring on 5,000 held-out subjects. Each config changes one thing, or a few for the stacks, so
+# its runs compare with runs/mimic_iv_gpt_next_token_s1 and with each other on the same probe tasks
+# (scripts/fir/sweep.sh). A longer context keeps the events per step: 2,048 events take 2 x 16 windows,
+# 4,096 take 2 x 8.
+defaults: [../mimic_iv_gpt_next_token.yaml]
+train:
+  batch_size: 32
+  grad_accum: 2
+  eval_batches: 40
+  wandb_group: sweep-next-token-nov11
+evaluate:
+  next_event_max_subjects: 5000

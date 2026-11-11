@@ -1,0 +1,7 @@
+# Time: rotary encoding over event order and no age input at all (positions only, as a plain language model).
+defaults: [_common.yaml]
+model:
+  attention: rope
+  time_encoding: none
+train:
+  out_dir: runs/sweep_rope_order_no_age

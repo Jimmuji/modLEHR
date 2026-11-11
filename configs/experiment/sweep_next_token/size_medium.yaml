@@ -1,0 +1,8 @@
+# Size: 8 x 384, 12 heads.
+defaults: [_common.yaml]
+model:
+  d_model: 384
+  n_layers: 8
+  n_heads: 12
+train:
+  out_dir: runs/sweep_size_medium

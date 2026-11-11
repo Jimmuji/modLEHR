@@ -182,6 +182,7 @@ the `description_regex` keeps only disorders as targets.
 | `data_fraction` | `1.0` | Train on this share of the training subjects, for a learning curve: the first share of one fixed random order (seed 0, whatever `seed` is), so smaller shares are subsets of larger ones and every seed sees the same subjects. The vocabulary, starting rates and evaluation are those of the full data; `modlehr baseline` fits on the same subjects |
 | `wandb_project` | none | Track the run in this Weights & Biases project: every check (losses, learning rate, steps per second, peak GPU memory; wandb adds GPU utilization), then the `evaluate` and `baseline` summaries in the same run. Off when unset. Needs `pip install wandb` and `wandb login` |
 | `wandb_entity` | none | The wandb team or user that owns the project; default is the logged-in user's |
+| `wandb_group` | `null` | wandb group of the run, e.g. one per sweep, so its runs are compared together |
 
 Each training step draws `batch_size` random subjects and a random window of at most `max_len`
 events from each. The run keeps the checkpoint with the lowest tuning loss.

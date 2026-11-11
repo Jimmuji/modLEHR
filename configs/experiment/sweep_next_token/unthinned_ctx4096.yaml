@@ -1,0 +1,8 @@
+# Context 4,096 with unthinned inputs (ETHOS + RL's 4,096; PORTER reads up to 16,384).
+defaults: [_common.yaml, ../../data/mimic_iv_discharge_unthinned.yaml]
+model:
+  max_len: 4096
+train:
+  out_dir: runs/sweep_unthinned_ctx4096
+  batch_size: 8
+  eval_batches: 160

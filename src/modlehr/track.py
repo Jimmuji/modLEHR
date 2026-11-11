@@ -34,6 +34,7 @@ class Tracker:
         if not id_file.exists():
             id_file.write_text(uuid.uuid4().hex[:16])
         self.run = wandb.init(project=cfg.train.wandb_project, entity=cfg.train.wandb_entity or None,
+                              group=cfg.train.wandb_group or None,
                               name=out_dir.name, id=id_file.read_text().strip(), resume="allow",
                               dir=str(out_dir), job_type=job_type, config=cfg.to_dict())
 

@@ -1,0 +1,10 @@
+# Head: the competing-risks head of mimic_iv_gpt (targets and when) with unthinned inputs and 4,096 events, to
+# compare with unthinned_ctx4096: does the head matter once the context is long?
+defaults: [_common.yaml, ../../data/mimic_iv_discharge_unthinned.yaml]
+model:
+  max_len: 4096
+  head: competing_risk
+train:
+  out_dir: runs/sweep_risk_head_unthinned_ctx4096
+  batch_size: 8
+  eval_batches: 160

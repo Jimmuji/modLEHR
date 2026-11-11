@@ -1,0 +1,8 @@
+# Inputs: values in 10 bins (deciles) instead of 3, as ETHOS and PORTER. A larger vocabulary, so 4 batches of 16 per
+# step.
+defaults: [_common.yaml, ../../data/mimic_iv_bins10.yaml]
+train:
+  out_dir: runs/sweep_bins10
+  batch_size: 16
+  grad_accum: 4
+  eval_batches: 80

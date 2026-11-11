@@ -127,6 +127,7 @@ class TrainConfig:
     compile: bool = False  # torch.compile the model (CUDA; first steps are slower)
     wandb_project: str | None = None  # Weights & Biases project; tracking is off when unset
     wandb_entity: str | None = None  # wandb team or user (default: the logged-in user's)
+    wandb_group: str | None = None  # wandb group, e.g. one per sweep, so its runs are compared together
     # Early stopping: end the run after this many tuning checks in a row without a new lowest tuning loss
     # (null: run every step). The learning-rate schedule still follows train.steps, so a stopped run is the
     # first part of the full run, and best.pt is the same unless a lower tuning loss would have come later.

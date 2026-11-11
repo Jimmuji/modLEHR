@@ -1,0 +1,8 @@
+# Context: 2,048 events (ETHOS-ARES's 2,048 tokens).
+defaults: [_common.yaml]
+model:
+  max_len: 2048
+train:
+  out_dir: runs/sweep_ctx2048
+  batch_size: 16
+  eval_batches: 80

@@ -1,0 +1,5 @@
+# Linear probes (and fine-tuning) of the 10-bin sweep arms (bins10, ethos_like) on day1_long_stay_7d: the task and schedule of
+# ../mimic_iv_gpt_day1_long_stay_7d.yaml on the 10-bin data. finetune.init is set per arm (scripts/fir/sweep.sh).
+defaults: [../mimic_iv_gpt_day1_long_stay_7d.yaml, ../../data/mimic_iv_bins10.yaml]
+train:
+  out_dir: runs/sweep_bins10_day1_long_stay_7d

@@ -1,0 +1,6 @@
+# Attention: each event attends to the last year of events only (PORTER alternates local and global layers).
+defaults: [_common.yaml, ../../model/gpt_local_age.yaml]
+model:
+  attention_options: {window_years: 1.0}
+train:
+  out_dir: runs/sweep_local_age

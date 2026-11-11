@@ -1,0 +1,4 @@
+# Block: grouped-query attention (Llama, Qwen).
+defaults: [_common.yaml, ../../model/gpt_gqa.yaml]
+train:
+  out_dir: runs/sweep_gqa

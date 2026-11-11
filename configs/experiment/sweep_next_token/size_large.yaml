@@ -1,0 +1,8 @@
+# Size: 12 x 512, 8 heads.
+defaults: [_common.yaml]
+model:
+  d_model: 512
+  n_layers: 12
+  n_heads: 8
+train:
+  out_dir: runs/sweep_size_large

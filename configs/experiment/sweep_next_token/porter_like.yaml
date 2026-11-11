@@ -1,0 +1,11 @@
+# Stack after PORTER: unthinned inputs, 4,096 events, RMSNorm, SwiGLU, rotary over event order, no age input (still
+# 6 x 256, fixed vocabulary, values as tokens).
+defaults: [_common.yaml, ../../data/mimic_iv_discharge_unthinned.yaml, ../../model/gpt_rmsnorm.yaml, ../../model/gpt_swiglu.yaml]
+model:
+  max_len: 4096
+  attention: rope
+  time_encoding: none
+train:
+  out_dir: runs/sweep_porter_like
+  batch_size: 8
+  eval_batches: 160

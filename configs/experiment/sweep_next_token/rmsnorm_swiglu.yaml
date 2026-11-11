@@ -1,0 +1,4 @@
+# Block: RMSNorm and SwiGLU (Llama, PORTER) in place of LayerNorm and the GELU MLP (GPT-2, ETHOS, Delphi).
+defaults: [_common.yaml, ../../model/gpt_rmsnorm.yaml, ../../model/gpt_swiglu.yaml]
+train:
+  out_dir: runs/sweep_rmsnorm_swiglu

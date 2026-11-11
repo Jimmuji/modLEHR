@@ -1,0 +1,5 @@
+# Inputs: every lab, chart, drug and procedure (no first-per-quarter thinning) plus discharge codes, as ETHOS and
+# PORTER read the record.
+defaults: [_common.yaml, ../../data/mimic_iv_discharge_unthinned.yaml]
+train:
+  out_dir: runs/sweep_unthinned

@@ -1,0 +1,5 @@
+# Inputs: each token's vector plus vectors shared by its code groups (ICD chapter, drug name, a lab's bins), close
+# to ETHOS splitting codes into parts.
+defaults: [_common.yaml, ../../model/gpt_codes_hierarchy.yaml]
+train:
+  out_dir: runs/sweep_codes_hierarchy

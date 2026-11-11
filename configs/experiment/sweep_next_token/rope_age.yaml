@@ -1,0 +1,4 @@
+# Time: rotary encoding over the age gap in attention, on top of the added sinusoidal age (PORTER rotates by time).
+defaults: [_common.yaml, ../../model/gpt_rope_age.yaml]
+train:
+  out_dir: runs/sweep_rope_age

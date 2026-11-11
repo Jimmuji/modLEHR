@@ -1,0 +1,11 @@
+# Stack of the likeliest gains: unthinned inputs, 4,096 events, RMSNorm, SwiGLU, rotary over age, 8 x 384.
+defaults: [_common.yaml, ../../data/mimic_iv_discharge_unthinned.yaml, ../../model/gpt_rmsnorm.yaml, ../../model/gpt_swiglu.yaml, ../../model/gpt_rope_age.yaml]
+model:
+  max_len: 4096
+  d_model: 384
+  n_layers: 8
+  n_heads: 12
+train:
+  out_dir: runs/sweep_combo
+  batch_size: 8
+  eval_batches: 160

@@ -164,3 +164,22 @@ def test_finetune_configs_load():
             assert cfg.finetune.init == f"runs/{arm}_s1/best.pt" and cfg.train.out_dir == f"runs/{arm}_{task}"
             assert cfg.data == pretrained.data  # finetune refuses a checkpoint trained on other data
             assert cfg.model == pretrained.model  # from scratch (finetune.init: null) it is the same model
+
+
+def test_sweep_configs_load():
+    """The next_token sweep: 20 arms, each with its own out_dir in one wandb group and the same events per optimizer
+    step; the 10-bin fine-tuning configs keep their task and read the 10-bin data."""
+    sweep = Path("configs/experiment/sweep_next_token")
+    arms = sorted(p for p in sweep.glob("*.yaml") if not p.name.startswith("_"))
+    assert len(arms) == 20
+    base = load_config("configs/experiment/mimic_iv_gpt_next_token.yaml")
+    for path in arms:
+        cfg = load_config(path)
+        assert cfg.train.out_dir == f"runs/sweep_{path.stem}" and cfg.train.wandb_group == "sweep-next-token-nov11"
+        assert cfg.model.max_len * cfg.train.batch_size * cfg.train.grad_accum == 64 * 1024
+        assert cfg.train.steps == base.train.steps and cfg.evaluate.next_event_groups == base.evaluate.next_event_groups
+    for task in ("admission_hospital_mortality", "admission_icu", "day1_long_stay_7d", "predischarge_readmission_30d"):
+        cfg = load_config(sweep / f"_finetune_bins10_{task}.yaml")
+        plain = load_config(f"configs/experiment/mimic_iv_gpt_{task}.yaml")
+        assert cfg.data.n_bins == 10 and cfg.data.prepared_dir == "runs/prepared/mimic_iv_bins10"
+        assert cfg.finetune.labels == plain.finetune.labels and cfg.data.events == plain.data.events

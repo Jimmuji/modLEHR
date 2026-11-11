@@ -1,0 +1,8 @@
+# Context 2,048 with unthinned inputs.
+defaults: [_common.yaml, ../../data/mimic_iv_discharge_unthinned.yaml]
+model:
+  max_len: 2048
+train:
+  out_dir: runs/sweep_unthinned_ctx2048
+  batch_size: 16
+  eval_batches: 80

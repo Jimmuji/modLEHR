@@ -1,0 +1,4 @@
+# Block: query and key normalization (OLMo 2, Gemma 3, Qwen3).
+defaults: [_common.yaml, ../../model/gpt_qknorm.yaml]
+train:
+  out_dir: runs/sweep_qknorm

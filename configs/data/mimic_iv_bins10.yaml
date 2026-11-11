@@ -1,0 +1,6 @@
+# Full MIMIC-IV (mimic_iv.yaml) with each lab and ICU chart result in 10 bins (deciles of its training values)
+# instead of 3, as ETHOS and PORTER bin values. Everything else is mimic_iv.yaml's.
+defaults: [mimic_iv.yaml]
+data:
+  prepared_dir: runs/prepared/mimic_iv_bins10
+  n_bins: 10

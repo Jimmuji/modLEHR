@@ -1,0 +1,4 @@
+# Time: attention bias falling with the age gap (ALiBi over age).
+defaults: [_common.yaml, ../../model/gpt_alibi_age.yaml]
+train:
+  out_dir: runs/sweep_alibi_age

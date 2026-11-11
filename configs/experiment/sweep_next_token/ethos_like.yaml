@@ -1,0 +1,13 @@
+# Stack after ETHOS-ARES: 10 value bins, 2,048 events, GPT-2 block, 6 x 384 with 12 heads, dropout 0.3 (ETHOS-ARES
+# is 6 x 768).
+defaults: [_common.yaml, ../../data/mimic_iv_bins10.yaml]
+model:
+  max_len: 2048
+  d_model: 384
+  n_heads: 12
+  dropout: 0.3
+train:
+  out_dir: runs/sweep_ethos_like
+  batch_size: 8
+  grad_accum: 4
+  eval_batches: 160
