@@ -1,0 +1,17 @@
+# Fine-tune the plain GPT of synthea_gpt.yaml on a first heart failure within 5 years, predicted at ages 40, 45, ..., 80
+# (labels from scripts/synthea_tasks.py; tabular baseline scripts/synthea_logistic.py). scripts/fir/synthea.sh runs
+# it with the linear probe (finetune.freeze) and from the next-event GPT (synthea_gpt_next_token_heart_failure_5y.yaml).
+#   modlehr finetune --config configs/experiment/synthea_gpt_heart_failure_5y.yaml --seed 1
+defaults: [synthea_gpt.yaml]
+finetune:
+  labels: data/synthea_tasks/heart_failure_5y
+  init: runs/synthea_gpt_s1/best.pt
+train:
+  out_dir: runs/synthea_gpt_heart_failure_5y
+  batch_size: 64
+  lr: 1.0e-4
+  min_lr: 1.0e-5
+  warmup: 100
+  steps: 3000
+  eval_every: 250      # tuning AUROC over every tuning sample
+  patience: 5

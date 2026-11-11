@@ -1,0 +1,6 @@
+# synthea_gpt_myocardial_infarction_5y.yaml from the GPT pretrained on every next event (synthea_gpt_next_token.yaml).
+defaults: [synthea_gpt_myocardial_infarction_5y.yaml, ../model/gpt_next_token.yaml]
+finetune:
+  init: runs/synthea_gpt_next_token_s1/best.pt
+train:
+  out_dir: runs/synthea_gpt_next_token_myocardial_infarction_5y

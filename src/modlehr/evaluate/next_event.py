@@ -98,7 +98,7 @@ def next_event(cfg: Config, checkpoint: str | Path, out_json: str | Path | None 
     n = 0
     nll = 0.0
     hits = {k: 0 for k in TOP_K}
-    fam_n = torch.zeros(len(families) + 1, dtype=torch.float64, device=device)
+    fam_n = torch.zeros(len(families) + 1, dtype=torch.float64)  # on the CPU: MPS has no float64
     fam_nll = torch.zeros_like(fam_n)
     fam_hit = {k: torch.zeros_like(fam_n) for k in (1, 10)}
     prob = {g: [] for g in groups}
@@ -118,14 +118,14 @@ def next_event(cfg: Config, checkpoint: str | Path, out_json: str | Path | None 
             loss = lse - x.gather(1, y[:, None]).squeeze(1)
             top = x.topk(min(max(TOP_K), n_tokens), dim=-1).indices  # a vocabulary may be smaller than 10
             hit = {k: (top[:, :k] == y[:, None]).any(dim=1) for k in TOP_K}
-            nll += float(loss.double().sum())
+            nll += float(loss.cpu().double().sum())
             for k in TOP_K:
                 hits[k] += int(hit[k].sum())
-            f = family_of[y]
-            fam_n.index_add_(0, f, torch.ones_like(loss, dtype=torch.float64))
-            fam_nll.index_add_(0, f, loss.double())
+            f, loss_cpu = family_of[y].cpu(), loss.cpu().double()
+            fam_n.index_add_(0, f, torch.ones_like(loss_cpu))
+            fam_nll.index_add_(0, f, loss_cpu)
             for k in fam_hit:
-                fam_hit[k].index_add_(0, f, hit[k].double())
+                fam_hit[k].index_add_(0, f, hit[k].cpu().double())
             for g, idx in groups.items():
                 lp = torch.logsumexp(x[:, torch.from_numpy(idx).to(device)], dim=-1) - lse
                 yes = in_group[g][y]

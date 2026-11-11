@@ -183,3 +183,20 @@ def test_sweep_configs_load():
         plain = load_config(f"configs/experiment/mimic_iv_gpt_{task}.yaml")
         assert cfg.data.n_bins == 10 and cfg.data.prepared_dir == "runs/prepared/mimic_iv_bins10"
         assert cfg.finetune.labels == plain.finetune.labels and cfg.data.events == plain.data.events
+
+
+def test_synthea_task_configs_load():
+    """Synthea's onset tasks (scripts/synthea_tasks.py): each fine-tuning config reads its own labels on synthea_gpt's
+    data, and the next-event twin differs only in its head, checkpoint and out_dir."""
+    tasks = sorted(p.stem.removeprefix("synthea_gpt_") for p in Path("configs/experiment").glob("synthea_gpt_*_5y.yaml")
+                   if not p.stem.startswith("synthea_gpt_next_token_"))
+    assert len(tasks) == 7
+    pretrain = load_config("configs/experiment/synthea_gpt_next_token.yaml")
+    assert pretrain.model.head == "next_token" and "death" in pretrain.evaluate.next_event_groups
+    for task in tasks:
+        cr = load_config(f"configs/experiment/synthea_gpt_{task}.yaml")
+        nt = load_config(f"configs/experiment/synthea_gpt_next_token_{task}.yaml")
+        assert cr.finetune.labels == nt.finetune.labels == f"data/synthea_tasks/{task}"
+        assert cr.data == nt.data and cr.data.prepared_dir == "runs/prepared/synthea_binned"
+        assert (cr.model.head, nt.model.head) == ("competing_risk", "next_token")
+        assert nt.finetune.init == "runs/synthea_gpt_next_token_s1/best.pt" and cr.train.steps == nt.train.steps

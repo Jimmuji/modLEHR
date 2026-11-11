@@ -1,0 +1,8 @@
+# The plain GPT of synthea_gpt.yaml (same data, size and schedule) pretrained on every next event
+# (configs/model/gpt_next_token.yaml): measurements as well as first disorders and death. On Synthea the two
+# heads can be compared on the same onset tasks (synthea_gpt_<task>.yaml and synthea_gpt_next_token_<task>.yaml),
+# which on MIMIC-IV the in-stay tasks do not allow, since there diagnoses are timed at discharge.
+#   modlehr run --config configs/experiment/synthea_gpt_next_token.yaml --seed 1   # trains, then next-event
+defaults: [synthea_gpt.yaml, ../model/gpt_next_token.yaml, ../evaluate/synthea_next_event.yaml]
+train:
+  out_dir: runs/synthea_gpt_next_token

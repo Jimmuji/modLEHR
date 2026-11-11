@@ -1,0 +1,14 @@
+# Representative next events on Synthea for `modlehr next-event` (src/modlehr/evaluate/next_event.py): death, the
+# onset of the disorders of scripts/synthea_tasks.py, and three measurements in their worst third.
+evaluate:
+  next_event_groups:
+    death: "^MEDS_DEATH$"
+    stroke: "^SNOMEDCT//230690007$"
+    myocardial_infarction: "^SNOMEDCT//(22298006|401303003|401314000)$"
+    heart_failure: "^SNOMEDCT//(88805009|84114007)$"
+    type2_diabetes: "^SNOMEDCT//44054006$"
+    ckd_stage3: "^SNOMEDCT//433144002$"
+    lung_cancer: "^SNOMEDCT//(254637007|254632001)$"
+    hba1c_top_third: "^LOINC//4548-4//Q3$"
+    egfr_bottom_third: "^LOINC//33914-3//Q1$"
+    systolic_bp_top_third: "^LOINC//8480-6//Q3$"
