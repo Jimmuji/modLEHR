@@ -135,6 +135,29 @@ the time part can. Lower is better.
 Output: `evaluate.csv` (one row per pair: target, landmark, cases, controls, AUC),
 `evaluate_calibration.csv` and `evaluate.json` (summary) in the run directory.
 
+## next-event
+
+A model trained with `model.head: next_token` gives no risk within a horizon, so `modlehr evaluate` refuses it;
+`modlehr next-event` scores what it was trained for (`modlehr run` calls it after training such a model). For
+every event after a subject's first, the model's distribution over the next event is read at the event before it.
+Each timeline is cut into windows of `max_len` events that overlap by one, so every next event is scored once.
+
+- Overall: the mean cross-entropy of the event that came (nats), its perplexity, top-1, top-5 and top-10
+  accuracy, and the same by the family of the event that came (`LAB//RESULT`, `LAB`, `MEDICATION`, `ICD10`, ...).
+- Representative events: `evaluate.next_event_groups` names groups of tokens by a regular expression over token
+  names. For each group, the model's probability that the next event is in the group (the sum over its tokens)
+  is scored against whether it is: AUROC, AUPRC, the share of next events in the group, the mean predicted
+  probability, and how often the event that came was in the model's top 10. MIMIC-IV's groups are in
+  `configs/evaluate/mimic_iv_next_event.yaml` (death, ICU admission, admission, five lab results, vasopressors,
+  diagnoses).
+
+```
+$ modlehr next-event --config configs/experiment/mimic_iv_gpt_next_token.yaml --seed 1
+```
+
+Writes `<train.out_dir>/next_event.json` and puts the numbers in the run's wandb summary.
+`evaluate.next_event_max_subjects` scores a random subset of subjects.
+
 ## baseline
 
 Fits two classical models on exactly the same pairs: an L2-regularized logistic regression and

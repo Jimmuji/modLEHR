@@ -132,7 +132,7 @@ the `description_regex` keeps only disorders as targets.
 | `norm` | `layernorm` | `layernorm`, `rmsnorm` |
 | `ffn` | `gelu_mlp` | `gelu_mlp` (hidden width 4 x `d_model`), `swiglu` (gated, hidden width 8/3 x `d_model`), `moe` (mixture of experts) |
 | `ffn_options` | `{}` | Passed to the feed-forward part; see below |
-| `head` | `competing_risk` | `competing_risk` (the targets and when), `next_token` (every next event; for pretraining, scored with `modlehr finetune`) |
+| `head` | `competing_risk` | `competing_risk` (the targets and when), `next_token` (every next event; for pretraining, scored with `modlehr next-event` and `modlehr finetune`) |
 
 `attention_options` that every attention accepts:
 
@@ -210,6 +210,9 @@ step, train and tuning loss, the loss parts, seconds), `best.pt`, `last.pt`, and
 | `batch_size` | `256` | Timelines per forward pass |
 | `likelihood` | `true` | Also report the negative log-likelihood per prediction on the split |
 | `recalibrate` | `false` | Before scoring, scale every rate at a landmark by the one factor that makes the tuning split's expected number of new targets in the window equal its observed one. AUCs do not change; calibration on the evaluation split then shows what is left once the overall level is right. The factors are in the summary (`recalibration`) |
+| `next_event_groups` | `{}` | `modlehr next-event`: groups of tokens scored on their own, `{name: regular expression over token names}` (e.g. `configs/evaluate/mimic_iv_next_event.yaml`) |
+| `next_event_max_subjects` | `null` | `modlehr next-event`: score this many randomly chosen subjects (all when null) |
+| `next_event_batch_size` | `16` | `modlehr next-event`: windows per batch (each position holds a row of logits over every token) |
 
 `modlehr baseline` uses the same `evaluate` section, so its pairs line up with the model's.
 `--models` picks `logistic`, `gbm` or both; `--gbm-features` (default 2,000) caps the columns

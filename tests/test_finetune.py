@@ -81,7 +81,7 @@ def test_finetune_scores_every_sample(pretrained, tmp_path, start):
 
 def test_a_next_token_model_is_fine_tuned_but_not_evaluated(tiny_config, tmp_path):
     """model.head: next_token pretrains on every next event. Fine-tuning reads its states like any model's;
-    evaluate has no target risk to score, and `modlehr run` trains it and leaves evaluate out."""
+    evaluate has no target risk to score, so `modlehr run` trains it and scores the next event instead."""
     from modlehr.cli import main
     from modlehr.evaluate.run import evaluate
     tiny_config.model.head = "next_token"
@@ -92,6 +92,7 @@ def test_a_next_token_model_is_fine_tuned_but_not_evaluated(tiny_config, tmp_pat
     checkpoint = out / "best.pt"
     log = [json.loads(line) for line in (out / "log.jsonl").read_text().splitlines()]
     assert checkpoint.exists() and not (out / "evaluate.json").exists()
+    assert json.loads((out / "next_event.json").read_text())["predictions"] > 0
     assert log[-1]["tune_loss"] < log[0]["tune_loss"] and 0 <= log[-1]["accuracy"] <= 1
     weights = torch.load(checkpoint, weights_only=False)["model"]
     vocab = json.loads((Path(tiny_config.data.prepared_dir) / "vocab.json").read_text())

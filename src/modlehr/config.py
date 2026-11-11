@@ -155,6 +155,12 @@ class EvaluateConfig:
     # number of new targets on the tuning split equal the observed one. Ranks within a target, so AUC, do not
     # change; calibration on the evaluation split then shows what is left once the overall level is right.
     recalibrate: bool = False
+    # `modlehr next-event` (a model with model.head: next_token): groups of tokens scored on their own, as
+    # {name: regular expression over token names}, e.g. {icu_admission: "^ICU_ADMISSION//"}; subjects scored (all
+    # when null) and windows per batch (each position holds a row of n_tokens logits).
+    next_event_groups: dict = field(default_factory=dict)
+    next_event_max_subjects: int | None = None
+    next_event_batch_size: int = 16
 
 
 @dataclass

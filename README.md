@@ -74,6 +74,7 @@ modlehr compare runs/synthea_gpt_s1 runs/synthea_gpt_gqa_s1 runs/synthea_gpt_log
 | `modlehr embed-tokens` | Give every token a text and its vector from a text encoder, for `model.code_encoding: text_*` |
 | `modlehr train` | Fit the model; keep the checkpoint with the lowest tuning loss |
 | `modlehr evaluate` | Landmark AUC, calibration and held-out likelihood |
+| `modlehr next-event` | For a `next_token` model: next-event cross-entropy and top-k accuracy, overall, by event family and for chosen event groups (AUROC) |
 | `modlehr baseline` | Logistic regression and gradient boosting on the same task |
 | `modlehr finetune` | Fine-tune a model on one binary task (an ACES task's labels, see `configs/tasks`); AUROC and predictions |
 | `modlehr generate` | Sample future outcomes for one patient |

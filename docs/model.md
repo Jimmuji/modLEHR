@@ -32,8 +32,9 @@ a diagnosis. This is how ETHOS, PORTER and MEDS-EIC-AR pretrain. `competing_risk
 targets only, and on data such as MIMIC-IV, where diagnoses are timed at discharge, that says
 nothing about what happens during a stay. `next_token` predicts no waiting time and gives no risk
 within a horizon, so `modlehr evaluate` does not apply: the model is pretrained with
-`modlehr train` and scored on a task with `modlehr finetune`, which reads the model's final
-states and leaves the head out (`configs/model/gpt_next_token.yaml`).
+`modlehr train`, scored on what it was trained for with `modlehr next-event` (see
+[the pipeline](pipeline.md#next-event)), and scored on a task with `modlehr finetune`, which reads the model's
+final states and leaves the head out (`configs/model/gpt_next_token.yaml`).
 
 Every part is registered by name and picked in `configs/model/`:
 

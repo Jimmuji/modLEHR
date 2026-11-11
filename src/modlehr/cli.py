@@ -9,6 +9,7 @@
     modlehr embed-tokens --config configs/experiment/synthea_gpt.yaml --encoder Qwen/Qwen3-Embedding-0.6B
     modlehr train    --config configs/experiment/synthea_gpt.yaml
     modlehr evaluate --config configs/experiment/synthea_gpt.yaml
+    modlehr next-event --config configs/experiment/mimic_iv_gpt_next_token.yaml --seed 1   (a next_token model)
     modlehr baseline --config configs/experiment/synthea_gpt.yaml
     modlehr finetune --config configs/experiment/mimic_iv_gpt_readmission_30d.yaml   (one ACES task, AUROC)
     modlehr generate --config configs/experiment/synthea_gpt.yaml --subject 0 --start-age 50
@@ -35,6 +36,7 @@ CONFIG_COMMANDS = {
     "embed-tokens": "a text for every token, and its vector from a text encoder or a code table (for model.code_encoding text_*)",
     "train": "train a model",
     "evaluate": "AUC at landmark ages and held-out likelihood",
+    "next-event": "how well a next_token model predicts the next event, overall and for chosen event groups",
     "baseline": "logistic regression and gradient boosting on the same task",
     "finetune": "fine-tune a model on one binary task (an ACES task's labels) and report its AUROC",
     "generate": "sample futures for one patient",
@@ -81,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--set", action="append", default=[], metavar="SECTION.KEY=VALUE",
                        help="override a config value, e.g. --set model.attention=gqa (repeatable)")
         p.add_argument("--seed", type=int, help="set train.seed and add _s<seed> to train.out_dir")
-        if name in ("evaluate", "generate", "simulate", "delphi"):
+        if name in ("evaluate", "next-event", "generate", "simulate", "delphi"):
             p.add_argument("--checkpoint", help="default: <train.out_dir>/best.pt")
         if name == "embed-tokens":
             p.add_argument("--encoder", help="a Hugging Face text encoder, a name or a local path; without it only the "
@@ -101,6 +103,8 @@ def build_parser() -> argparse.ArgumentParser:
             p.add_argument("--out-dir", help="default: <train.out_dir>")
         if name == "evaluate":
             p.add_argument("--out", help="default: <train.out_dir>/evaluate.csv")
+        if name == "next-event":
+            p.add_argument("--out", help="default: <train.out_dir>/next_event.json")
         if name == "delphi":
             p.add_argument("--gap-days", default="0.1,365.25",
                            help="comma-separated gaps before each diagnosis; Delphi-2M reports 0.1 day and one year")
@@ -208,6 +212,9 @@ def main(argv: list[str] | None = None) -> None:
     elif args.command == "evaluate":
         from modlehr.evaluate.run import evaluate
         evaluate(cfg, checkpoint, args.out)
+    elif args.command == "next-event":
+        from modlehr.evaluate.next_event import next_event
+        next_event(cfg, checkpoint, args.out)
     elif args.command == "export-delphi":
         from modlehr.train.delphi import export
         export(cfg, args.out or f"{cfg.train.out_dir}_delphi_data", args.delphi_out or f"{cfg.train.out_dir}_delphi_code")
@@ -229,10 +236,14 @@ def main(argv: list[str] | None = None) -> None:
         else:
             print(f"[run] {cfg.data.prepared_dir} matches the data config; skipping prepare")
         best = train(cfg, resume=args.resume, stop_after=args.stop_after)
+        finished = args.stop_after is None or args.stop_after >= cfg.train.steps - 1
         if not gives_risk(cfg.model):
             print(f"[run] model.head: {cfg.model.head} gives no risk within a horizon; skipping evaluate "
                   "(score the model on a task with `modlehr finetune`)")
-        elif args.stop_after is None or args.stop_after >= cfg.train.steps - 1:
+            if finished and cfg.model.head == "next_token":
+                from modlehr.evaluate.next_event import next_event
+                next_event(cfg, best)
+        elif finished:
             evaluate(cfg, best)
     elif args.command == "delphi":
         from modlehr.evaluate.delphi import delphi_auc

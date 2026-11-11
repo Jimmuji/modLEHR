@@ -3,6 +3,8 @@
 # at discharge, so mimic_iv_gpt's pretraining says nothing about what happens during a stay, which five of the six
 # ETHOS-ARES and PORTER tasks ask. Pretrained for the fine-tuning configs mimic_iv_gpt_next_token_<task>.yaml:
 #   modlehr train --config configs/experiment/mimic_iv_gpt_next_token.yaml --seed 1
-defaults: [mimic_iv_gpt.yaml, ../model/gpt_next_token.yaml]
+# Scored on the next event, overall and for the groups of configs/evaluate/mimic_iv_next_event.yaml:
+#   modlehr next-event --config configs/experiment/mimic_iv_gpt_next_token.yaml --seed 1
+defaults: [mimic_iv_gpt.yaml, ../model/gpt_next_token.yaml, ../evaluate/mimic_iv_next_event.yaml]
 train:
   out_dir: runs/mimic_iv_gpt_next_token

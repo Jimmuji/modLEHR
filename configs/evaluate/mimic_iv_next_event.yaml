@@ -1,0 +1,17 @@
+# Representative next events on MIMIC-IV for `modlehr next-event` (a model with model.head: next_token), each a
+# regular expression over token names. Chosen after ETHOS-ARES's tasks (death, ICU admission, admission) and the
+# EHRSHOT lab and diagnosis tasks PORTER reports (hyperkalemia, hyponatremia, anemia, thrombocytopenia, new
+# diagnoses), plus kidney injury and vasopressors. Lab groups are a result in the top or bottom third of the
+# training values (the n_bins: 3 tokens), not a clinical threshold. Diagnoses are recorded at discharge.
+evaluate:
+  next_event_groups:
+    death: "^MEDS_DEATH$"
+    icu_admission: "^ICU_ADMISSION//"
+    hospital_admission: "^HOSPITAL_ADMISSION//"
+    potassium_top_third: "^LAB//RESULT//50971//.*//Q3$"
+    sodium_bottom_third: "^LAB//RESULT//50983//.*//Q1$"
+    hemoglobin_bottom_third: "^LAB//RESULT//51222//.*//Q1$"
+    platelets_bottom_third: "^LAB//RESULT//51265//.*//Q1$"
+    creatinine_top_third: "^LAB//RESULT//50912//.*//Q3$"
+    vasopressor: "(?i)^MEDICATION//START//(norepinephrine|vasopressin|phenylephrine)"
+    diagnosis: "^ICD(9|10)//"
