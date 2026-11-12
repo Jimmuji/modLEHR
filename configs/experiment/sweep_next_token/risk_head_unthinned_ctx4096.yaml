@@ -8,3 +8,6 @@ train:
   out_dir: runs/sweep_risk_head_unthinned_ctx4096
   batch_size: 8
   eval_batches: 160
+evaluate:
+  batch_size: 8               # 4,096 events: attention scores are 8 heads x 4,096^2 floats per window
+  next_event_batch_size: 8    # (the smoke run of risk_head_unthinned_ctx4096 ran out of memory at 256)

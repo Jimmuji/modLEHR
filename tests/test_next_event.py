@@ -11,7 +11,7 @@ import pytest
 import torch
 from sklearn.metrics import average_precision_score, roc_auc_score
 
-from modlehr.evaluate.next_event import group_members, next_event, overlapping_windows
+from modlehr.evaluate.next_event import family, group_members, next_event, overlapping_windows
 from modlehr.evaluate.run import load_model
 from modlehr.prepare.dataset import collate, open_split
 from modlehr.prepare.pipeline import run_prepare
@@ -49,7 +49,7 @@ def test_next_event_scores_each_next_event_as_a_full_pass_would(tiny_config):
 
     model, vocab = load_model(best, Path(cfg.data.prepared_dir), torch.device("cpu"))
     disorders = group_members(list(vocab.tokens), cfg.evaluate.next_event_groups)["disorders"]
-    loss, top1, top10, p, y = [], [], [], [], []
+    loss, top1, top10, p, y, fam = [], [], [], [], [], []
     with torch.no_grad():
         for i in range(len(split)):
             row = split.subject(i, labels=False)
@@ -62,6 +62,7 @@ def test_next_event_scores_each_next_event_as_a_full_pass_would(tiny_config):
             top10 += (logp.topk(min(10, logp.shape[-1]), dim=-1).indices == nxt[:, None]).any(1).tolist()
             p += logp[:, torch.from_numpy(disorders)].exp().sum(-1).tolist()
             y += np.isin(nxt.numpy(), disorders).tolist()
+            fam += [family(vocab.tokens[int(k)]) for k in nxt]
     assert summary["predictions"] == len(loss) > 0
     assert summary["nll"] == pytest.approx(np.mean(loss), rel=1e-4)
     assert summary["perplexity"] == pytest.approx(np.exp(np.mean(loss)), rel=1e-4)
@@ -73,6 +74,12 @@ def test_next_event_scores_each_next_event_as_a_full_pass_would(tiny_config):
     assert group["auprc"] == pytest.approx(average_precision_score(y, p), abs=1e-5)
     assert group["mean_predicted"] == pytest.approx(np.mean(p), rel=1e-4)
     assert sum(f["share"] for f in summary["by_family"].values()) == pytest.approx(1.0)
+    fam, loss, top1 = np.array(fam), np.array(loss), np.array(top1)
+    assert set(summary["by_family"]) == set(fam) and len(set(fam)) > 1
+    for name, f in summary["by_family"].items():  # each family's numbers are its own events'
+        assert f["share"] == pytest.approx(np.mean(fam == name))
+        assert f["nll"] == pytest.approx(loss[fam == name].mean(), rel=1e-4)
+        assert f["top1"] == pytest.approx(top1[fam == name].mean())
     saved = json.loads((Path(cfg.train.out_dir) / "next_event.json").read_text())
     assert saved["predictions"] == summary["predictions"] and set(saved["groups"]) == {"death", "disorders"}
 

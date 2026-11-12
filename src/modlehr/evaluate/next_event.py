@@ -82,7 +82,8 @@ def next_event(cfg: Config, checkpoint: str | Path, out_json: str | Path | None 
     tokens = list(vocab.tokens)
     n_tokens = len(tokens)
     families = sorted({family(t) for t in tokens[1:]})
-    family_of = torch.tensor([0] + [families.index(family(t)) for t in tokens[1:]], device=device)
+    # index 0 is padding, so family j (from 1) is families[j - 1]
+    family_of = torch.tensor([0] + [families.index(family(t)) + 1 for t in tokens[1:]], device=device)
     groups = group_members(tokens, cfg.evaluate.next_event_groups)
     in_group = {g: torch.zeros(n_tokens, dtype=torch.bool, device=device).index_fill_(0, torch.from_numpy(idx).to(device), True)
                 for g, idx in groups.items()}
