@@ -17,6 +17,14 @@ from modlehr.config import Config, DataConfig, EvaluateConfig, EventRule, ModelC
 from modlehr.data.toy import DISORDERS, FINDING, HBA1C, NOTE, make_meds, note_text  # noqa: F401
 
 
+
+@pytest.fixture(autouse=True)
+def _tracking_not_required(monkeypatch):
+    """Fir jobs set MODLEHR_REQUIRE_WANDB=1 (scripts/fir/env.sh); the tests train untracked, as on a laptop."""
+    for name in ("MODLEHR_REQUIRE_WANDB", "MODLEHR_WANDB_ENTITY"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.fixture
 def tiny_meds(tmp_path: Path) -> Path:
     return make_meds(tmp_path / "meds")

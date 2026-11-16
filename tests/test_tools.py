@@ -397,6 +397,59 @@ def test_tracking_is_off_by_default(tiny_config):
     assert tracker.run is None and not (Path(tiny_config.train.out_dir) / "wandb_id").exists()
 
 
+
+def test_required_tracking_stops_untracked_training(tiny_config, monkeypatch):
+    """MODLEHR_REQUIRE_WANDB=1 (every Fir job): a training run without a project, offline, failing to start its
+    wandb run, or landing in another entity than MODLEHR_WANDB_ENTITY stops; evaluation may run untracked."""
+    import sys
+    import types
+
+    from modlehr.track import Tracker
+
+    runs = []
+
+    class Run:
+        def __init__(self, **kwargs):
+            self.kwargs, self.offline, self.disabled, self.finished = kwargs, False, False, None
+            self.entity, self.url = "lab-entity", "https://wandb.ai/lab-entity/p/runs/x"
+            runs.append(self)
+
+        def finish(self, exit_code=0):
+            self.finished = exit_code
+
+    monkeypatch.setitem(sys.modules, "wandb", types.SimpleNamespace(init=lambda **kw: Run(**kw)))
+    monkeypatch.setenv("MODLEHR_REQUIRE_WANDB", "1")
+    cfg = copy.deepcopy(tiny_config)
+    with pytest.raises(RuntimeError, match="set train.wandb_project"):
+        Tracker(cfg, cfg.train.out_dir, "train")
+    assert Tracker(cfg, cfg.train.out_dir, "evaluate").run is None and not runs
+
+    cfg.train.wandb_project = "p"
+    monkeypatch.setenv("WANDB_MODE", "offline")
+    with pytest.raises(RuntimeError, match="WANDB_MODE=offline"):
+        Tracker(cfg, cfg.train.out_dir, "finetune")
+    monkeypatch.delenv("WANDB_MODE")
+
+    monkeypatch.setenv("MODLEHR_WANDB_ENTITY", "other-entity")
+    with pytest.raises(RuntimeError, match="not 'other-entity'"):
+        Tracker(cfg, cfg.train.out_dir, "train")
+    assert runs[-1].finished == 1
+
+    monkeypatch.setenv("MODLEHR_WANDB_ENTITY", "lab-entity")
+    tracker = Tracker(cfg, cfg.train.out_dir, "train")
+    assert tracker.run is runs[-1] and tracker.run.kwargs["job_type"] == "train"
+    tracker.run.offline = True
+    with pytest.raises(RuntimeError, match="offline"):
+        tracker._check_online()
+
+    def unreachable(**kwargs):
+        raise ConnectionError("no route to api.wandb.ai")
+
+    monkeypatch.setitem(sys.modules, "wandb", types.SimpleNamespace(init=unreachable))
+    with pytest.raises(RuntimeError, match="could not start the run"):
+        Tracker(cfg, cfg.train.out_dir, "train")
+
+
 def test_delphi_prediction_points_and_bands():
     from modlehr.evaluate.delphi import band_of, prediction_index
 

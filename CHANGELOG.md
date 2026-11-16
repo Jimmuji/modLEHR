@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+Required wandb tracking
+- With `MODLEHR_REQUIRE_WANDB=1` in the environment, a training run (`run`, `train`, `finetune`) stops before its
+  first step unless its wandb run starts online: `train.wandb_project` set, `WANDB_MODE` not offline or disabled,
+  logged in, wandb reachable, and in `MODLEHR_WANDB_ENTITY` when that is set. Every run prints its wandb URL
+
 Fine-tuning on one task
 - `modlehr finetune` learns a binary task from labels in the MEDS label format (an ACES task's output): a linear
   classifier on the model's final state at each sample's last event at or before its prediction time, the model

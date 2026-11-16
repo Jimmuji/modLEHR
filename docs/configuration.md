@@ -191,8 +191,14 @@ events from each. The run keeps the checkpoint with the lowest tuning loss.
 `modlehr train --resume` continues from it exactly, and `--stop-after STEP` stops a run on purpose.
 
 With `wandb_project` set, the run's wandb id is kept in `out_dir/wandb_id`, so `--resume` and a
-later `modlehr evaluate` continue the same wandb run. On compute nodes without internet access, set
-`WANDB_MODE=offline` and upload afterwards from a login node with `wandb sync out_dir/wandb/offline-run-*`.
+later `modlehr evaluate` continue the same wandb run; its URL is printed when it starts. On compute
+nodes without internet access, set `WANDB_MODE=offline` and upload afterwards from a login node with
+`wandb sync out_dir/wandb/offline-run-*`.
+
+With `MODLEHR_REQUIRE_WANDB=1` in the environment, a training run (`run`, `train`, `finetune`) stops
+before its first step unless its wandb run starts online: `wandb_project` set, `WANDB_MODE` not
+`offline` or `disabled`, logged in, wandb reachable, and, when `MODLEHR_WANDB_ENTITY` is set, the run
+in that entity. Evaluation and baselines are not held to it.
 
 `out_dir` receives `config.yaml` (the full resolved config), `log.jsonl` (one line per check:
 step, train and tuning loss, the loss parts, seconds), `best.pt`, `last.pt`, and later
