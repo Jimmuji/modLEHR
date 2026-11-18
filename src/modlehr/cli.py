@@ -33,6 +33,7 @@ from pathlib import Path
 CONFIG_COMMANDS = {
     "prepare": "MEDS → tokenized timelines with labels",
     "info": "summarize a prepared dataset",
+    "subset": "a copy of the prepared data with a fraction of the subjects of every split, for quick runs",
     "embed-tokens": "a text for every token, and its vector from a text encoder or a code table (for model.code_encoding text_*)",
     "train": "train a model",
     "evaluate": "AUC at landmark ages and held-out likelihood",
@@ -85,6 +86,9 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--seed", type=int, help="set train.seed and add _s<seed> to train.out_dir")
         if name in ("evaluate", "next-event", "generate", "simulate", "delphi"):
             p.add_argument("--checkpoint", help="default: <train.out_dir>/best.pt")
+        if name == "subset":
+            p.add_argument("--fraction", type=float, default=0.1, help="share of the subjects of every split to keep")
+            p.add_argument("--out", help="default: <data.prepared_dir>_<percent>pct, e.g. runs/prepared/mimic_iv_10pct")
         if name == "embed-tokens":
             p.add_argument("--encoder", help="a Hugging Face text encoder, a name or a local path; without it only the "
                            "texts are written")
@@ -198,6 +202,9 @@ def main(argv: list[str] | None = None) -> None:
         from modlehr.prepare.pipeline import describe
         for line in describe(cfg.data):
             print(line)
+    elif args.command == "subset":
+        from modlehr.prepare.subset import ensure_subset
+        ensure_subset(cfg.data.prepared_dir, args.fraction, args.out)
     elif args.command == "embed-tokens":
         from modlehr.prepare.token_text import embed_tokens
         from modlehr.train.loop import pick_device

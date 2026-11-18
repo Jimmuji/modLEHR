@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+Reading the data from other code, and quick runs
+- `examples/prepared_data.py` reads prepared data and task samples with numpy alone, drawing the same training
+  windows as modLEHR; `examples/train_own_model.py` trains a plain PyTorch model on it and probes one task. See
+  docs/reading_prepared_data.md
+- `modlehr subset --fraction 0.1` writes `<prepared_dir>_10pct`: a tenth of the subjects of every split (those
+  `train.data_fraction: 0.1` trains on), with the full data's vocabulary, bins and task samples. Fine-tuning on a
+  subset takes its samples from the full data. `modlehr prepare` refuses to write over a subset
+- `scripts/fir/quick.sh ideas.txt`: one idea per line (a name, an experiment, `--set` changes), each trained on the
+  10% copy for 2,000 steps on its own 20G slice; `pack.sbatch` takes `SUBSET=0.1` and a `data.prepared_dir` setting
+
 Required wandb tracking
 - With `MODLEHR_REQUIRE_WANDB=1` in the environment, a training run (`run`, `train`, `finetune`) stops before its
   first step unless its wandb run starts online: `train.wandb_project` set, `WANDB_MODE` not offline or disabled,

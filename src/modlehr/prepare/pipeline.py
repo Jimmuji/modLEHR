@@ -135,6 +135,8 @@ def meds_fingerprint(meds_dir: str | Path) -> str:
 
 def run_prepare(cfg: DataConfig, log=print) -> dict:
     out_dir = Path(cfg.prepared_dir)
+    if (out_dir / "prepare.json").exists() and "subset" in json.loads((out_dir / "prepare.json").read_text()):
+        raise ValueError(f"{out_dir} is a subset made by `modlehr subset`; prepare the full data, then remake the subset")
     out_dir.mkdir(parents=True, exist_ok=True)
     if cfg.value_mode not in ("continuous", "binned", "none"):
         raise ValueError(f"value_mode must be continuous, binned or none, not '{cfg.value_mode}'")

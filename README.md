@@ -71,6 +71,7 @@ modlehr compare runs/synthea_gpt_s1 runs/synthea_gpt_gqa_s1 runs/synthea_gpt_log
 | `modlehr validate` | Check a MEDS dataset against the official schemas |
 | `modlehr prepare` | Select events, compute ages, group disease codes, build vocabularies, handle values, attach labels |
 | `modlehr info` | Summarize a prepared dataset |
+| `modlehr subset` | A copy of the prepared data with a share of the subjects, for quick runs |
 | `modlehr embed-tokens` | Give every token a text and its vector from a text encoder, for `model.code_encoding: text_*` |
 | `modlehr train` | Fit the model; keep the checkpoint with the lowest tuning loss |
 | `modlehr evaluate` | Landmark AUC, calibration and held-out likelihood |
@@ -232,6 +233,7 @@ No architecture moves AUC by more than 0.001. Full tables, calibration and the S
 | [docs/pipeline.md](docs/pipeline.md) | Each stage: what it reads, does and writes; running and comparing experiments |
 | [docs/model.md](docs/model.md) | The input head, blocks and competing-risks head, and every swappable part |
 | [docs/data.md](docs/data.md) | The MEDS format, MIMIC-IV, clinical notes and other sources |
+| [docs/reading_prepared_data.md](docs/reading_prepared_data.md) | The prepared arrays and task samples, read from your own code; a 10% copy for quick runs |
 | [docs/configuration.md](docs/configuration.md) | Every config key and its default |
 | [docs/disease_codes.md](docs/disease_codes.md) | Disease codes and how they become prediction targets |
 | [docs/extending.md](docs/extending.md) | Adding a model part or a data source |
@@ -261,6 +263,7 @@ src/modlehr/
   cli.py           the commands
 scripts/           end-to-end runs (run_mimic_iv*.sh, compare_*.sh), downloads (fetch_*.sh),
                    analysis/: tables and figures from evaluated runs
+examples/          prepared_data.py, a numpy-only loader; train_own_model.py, a plain PyTorch model on it
 tests/             unit tests and end-to-end tests on a tiny synthetic MEDS dataset
 docs/              the documentation above
 ```

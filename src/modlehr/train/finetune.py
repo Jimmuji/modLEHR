@@ -24,6 +24,7 @@ The samples of a split, with how many events each reads, are kept in <prepared_d
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import math
@@ -100,6 +101,20 @@ def task_samples(cfg: Config, split: str, log=print) -> dict[str, np.ndarray]:
         with np.load(cache) as z:
             if str(z["key"]) == key:
                 return {k: z[k] for k in SAMPLE_ARRAYS}
+
+    meta = json.loads((prepared / "prepare.json").read_text())
+    if "subset" in meta:  # made by `modlehr subset`: the full data's samples, for the subjects the subset keeps
+        from modlehr.prepare.dataset import subject_subset
+        from modlehr.prepare.subset import subset_samples
+        full_cfg = copy.deepcopy(cfg)
+        full_cfg.data.prepared_dir = meta["subset"]["of"]
+        full = task_samples(full_cfg, split, log)
+        n_full = len(open_split(meta["subset"]["of"], split))
+        out = subset_samples(full, n_full, subject_subset(n_full, meta["subset"]["fraction"]))
+        log(f"[finetune] {split}: {len(out['label']):,} of those samples are of subjects in the subset {prepared}")
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(cache, key=np.asarray(key), **out)
+        return out
 
     labels = read_labels(labels_dir / split)
     ds = open_meds(cfg.data.meds_dir)
