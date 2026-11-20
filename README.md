@@ -244,6 +244,7 @@ No architecture moves AUC by more than 0.001. Full tables, calibration and the S
 | [docs/pipeline.md](docs/pipeline.md) | Each stage: what it reads, does and writes; running and comparing experiments |
 | [docs/model.md](docs/model.md) | The input head, blocks and competing-risks head, and every swappable part |
 | [docs/data.md](docs/data.md) | The MEDS format, MIMIC-IV, clinical notes and other sources |
+| [docs/data_dictionary.md](docs/data_dictionary.md) | Every variable: MEDS columns and codes, model-input tokens and arrays, task labels |
 | [docs/reading_prepared_data.md](docs/reading_prepared_data.md) | The prepared arrays and task samples, read from your own code; a 10% copy for quick runs |
 | [docs/configuration.md](docs/configuration.md) | Every config key and its default |
 | [docs/disease_codes.md](docs/disease_codes.md) | Disease codes and how they become prediction targets |

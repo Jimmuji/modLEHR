@@ -6,7 +6,7 @@ Back to the [README](../README.md).
 how to load them from your own code. [examples/prepared_data.py](../examples/prepared_data.py) is a loader that
 needs only numpy; copy it next to your code.
 
-MIMIC-IV is credentialed data: report summary numbers only, never a patient's rows.
+Every array, token and label column is listed in [docs/data_dictionary.md](data_dictionary.md). MIMIC-IV is credentialed data: report summary numbers only, never a patient's rows.
 
 ## What is in a prepared directory
 
