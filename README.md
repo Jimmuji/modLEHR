@@ -122,8 +122,19 @@ runs; model comparisons belong on real records.
 
 ```bash
 pip install huggingface_hub
-hf download Jimmu1215/modlehr-synthea --repo-type dataset --local-dir data/synthea_meds
+hf download Jimmu1215/modlehr-synthea --repo-type dataset --include "data/*" "metadata/*" --local-dir data/synthea_meds
 ```
+
+The same repository also holds the output of step 3 below (95 MB) and the labels of 7 disease-onset tasks
+(3 MB), each downloaded to the path the configs read:
+
+```bash
+hf download Jimmu1215/modlehr-synthea --repo-type dataset --include "prepared/*" --local-dir runs
+hf download Jimmu1215/modlehr-synthea --repo-type dataset --include "synthea_tasks/*" --local-dir data
+```
+
+[docs/reading_prepared_data.md](docs/reading_prepared_data.md) shows how to read the prepared arrays from code of
+your own.
 
 **2. Check it:**
 
